@@ -1,0 +1,40 @@
+{
+	"name": "promised-pipes",
+	"version": "0.1.0",
+	"description": "Elegant async pipelines that flow, transform, and recover without the noise.",
+	"license": "MIT",
+	"author": "Prakhar-Srivastava",
+	"type": "module",
+	"main": "./pipe.mjs",
+	"module": "./pipe.mjs",
+	"types": "./pipe.d.ts",
+	"exports": {
+		".": {
+			"import": "./pipe.mjs",
+			"types": "./pipe.d.ts"
+		}
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	},
+	"scripts": {
+		"test": "node --test tests/pipe.test.mjs",
+		"test:watch": "node --test --watch tests/pipe.test.mjs"
+	},
+	"keywords": [
+		"promise",
+		"pipe",
+		"monad",
+		"async",
+		"pipeline",
+		"functional",
+		"thenable",
+		"retry",
+		"timeout",
+		"observable"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Prakhar-Srivastava/promised-pipes"
+	}
+}
