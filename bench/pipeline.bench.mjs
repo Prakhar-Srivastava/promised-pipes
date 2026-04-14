@@ -18,7 +18,7 @@ export default async function run() {
                         await fakeFetch();
                         break;
                     } catch {
-                        attempts++;io9
+                        attempts++;
                     }
                 }
             }
