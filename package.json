@@ -19,7 +19,11 @@
 	},
 	"scripts": {
 		"test": "node --test tests/pipe.test.mjs",
-		"test:watch": "node --test --watch tests/pipe.test.mjs"
+		"test:watch": "node --test --watch tests/pipe.test.mjs",
+		"build": "mkdir -p dist && esbuild pipe.mjs --bundle --minify --sourcemap --format=esm --target=es2020 --platform=browser --outfile=dist/pipe.min.mjs",
+		"build:iife": "mkdir -p dist && esbuild pipe.mjs --bundle --minify --sourcemap --format=iife --target=es2018 --platform=browser --global-name=Pipe --outfile=dist/pipe.global.js",
+		"build:wasm": "mkdir -p dist && esbuild targets/pipe.wasm.js --bundle --minify --format=esm --outfile=dist/pipe.wasm.mjs --target=es2020 --platform=neutral",
+		"build:all": "rm -rf dist && npm run build && npm run build:iife && npm run build:wasm"
 	},
 	"keywords": [
 		"promise",
@@ -36,5 +40,8 @@
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Prakhar-Srivastava/promised-pipes"
+	},
+	"devDependencies": {
+		"esbuild": "^0.28.0"
 	}
 }
