@@ -24,6 +24,7 @@ import assert from 'node:assert/strict';
 import Pipe, {
 	configure,
 	TimeoutError,
+	AbortError,
 	PipeError,
 	DEFAULT_MAX_TIMEOUT,
 	DEFAULT_MAX_ATTEMPTS,
@@ -96,6 +97,13 @@ describe('module exports', () => {
 		assert.strictEqual(e.message, 'test');
 	});
 
+	it('exports AbortError class', () => {
+		const e = new AbortError('manual-stop');
+		assert.ok(e instanceof Error);
+		assert.strictEqual(e.name, 'AbortError');
+		assert.strictEqual(e.reason, 'manual-stop');
+	});
+
 	it('exports configure function', () => assert.strictEqual(typeof configure, 'function'));
 
 	it('default export is a frozen Pipe API', () => {
@@ -109,6 +117,9 @@ describe('module exports', () => {
 			maxTimeout: DEFAULT_MAX_TIMEOUT,
 			maxAttempts: DEFAULT_MAX_ATTEMPTS,
 			maxDelay: DEFAULT_MAX_DELAY,
+			abort: { enabled: false },
+			pool: { enabled: false, limit: 8, maxQueue: Infinity },
+			coalesce: { enabled: false, ttl: 0, shareErrors: false },
 		});
 	});
 });
@@ -119,7 +130,14 @@ describe('configure()', () => {
 	it('returns a frozen API with resolved config', () => {
 		const P = configure({ maxTimeout: 1000, maxAttempts: 3, maxDelay: 100 });
 		assert.ok(Object.isFrozen(P));
-		assert.deepStrictEqual(P.config, { maxTimeout: 1000, maxAttempts: 3, maxDelay: 100 });
+		assert.deepStrictEqual(P.config, {
+			maxTimeout: 1000,
+			maxAttempts: 3,
+			maxDelay: 100,
+			abort: { enabled: false },
+			pool: { enabled: false, limit: 8, maxQueue: Infinity },
+			coalesce: { enabled: false, ttl: 0, shareErrors: false },
+		});
 	});
 
 	it('uses defaults for omitted options', () => {
@@ -133,6 +151,29 @@ describe('configure()', () => {
 		const P = configure({ maxDelay: 0 });
 		assert.strictEqual(P.config.maxDelay, 0);
 	});
+
+	it('accepts opt-in abort/pool/coalesce config groups', () => {
+		const P = configure({
+			abort: { enabled: true },
+			pool: { enabled: true, limit: 3, maxQueue: 4 },
+			coalesce: { enabled: true, ttl: 100, shareErrors: true },
+		});
+		assert.deepStrictEqual(P.config.abort, { enabled: true });
+		assert.deepStrictEqual(P.config.pool, { enabled: true, limit: 3, maxQueue: 4 });
+		assert.deepStrictEqual(P.config.coalesce, { enabled: true, ttl: 100, shareErrors: true });
+	});
+
+	it('throws for invalid pool.limit', () =>
+		assertPipeError(
+			() => configure({ pool: { enabled: true, limit: 0 } }),
+			'pool.limit',
+		));
+
+	it('throws for invalid coalesce.ttl', () =>
+		assertPipeError(
+			() => configure({ coalesce: { enabled: true, ttl: -1 } }),
+			'coalesce.ttl',
+		));
 
 	it('throws PipeError for maxTimeout: 0', () =>
 		assertPipeError(() => configure({ maxTimeout: 0 }), 'maxTimeout'));
@@ -695,6 +736,110 @@ describe('Pipe.fromAsync()', () => {
 		assertPipeError(() => Pipe.fromAsync('bad'), 'fromAsync'));
 });
 
+describe('v0.2 configured extensions', () => {
+	it('abort extension rejects immediately when signal is already aborted', async () => {
+		const P = configure({ abort: { enabled: true } });
+		const ctrl = new AbortController();
+		ctrl.abort('pre-abort');
+		await assertRejects(
+			P.fromAsync(() => Promise.resolve('never'), { signal: ctrl.signal }),
+			e => {
+				assert.ok(e instanceof AbortError);
+				assert.strictEqual(e.reason, 'pre-abort');
+			},
+		);
+	});
+
+	it('abort extension passes signal to fromAsync factory', async () => {
+		const P = configure({ abort: { enabled: true } });
+		const ctrl = new AbortController();
+		const result = await P.fromAsync(
+			async signal => signal === ctrl.signal ? 'ok' : 'bad',
+			{ signal: ctrl.signal },
+		);
+		assert.strictEqual(result, 'ok');
+	});
+
+	it('throws when signal is provided without abort extension', () => {
+		const P = configure({});
+		assertPipeError(
+			() => P.fromAsync(() => Promise.resolve(1), { signal: new AbortController().signal }),
+			'abort',
+		);
+	});
+
+	it('pool extension bounds max in-flight tasks', async () => {
+		const P = configure({ pool: { enabled: true, limit: 2 } });
+		let inFlight = 0;
+		let maxSeen = 0;
+
+		const runTask = () => P.fromAsync(async () => {
+			inFlight++;
+			maxSeen = Math.max(maxSeen, inFlight);
+			await sleep(15);
+			inFlight--;
+			return 1;
+		});
+
+		await Promise.all(Array.from({ length: 8 }, () => runTask()));
+		assert.strictEqual(maxSeen, 2);
+	});
+
+	it('pool extension rejects when queue limit is exceeded', async () => {
+		const P = configure({ pool: { enabled: true, limit: 1, maxQueue: 0 } });
+		const first = P.fromAsync(() => sleep(20).then(() => 1));
+		await assertRejects(
+			P.fromAsync(() => Promise.resolve(2)),
+			e => assert.ok(e instanceof PipeError),
+		);
+		await first;
+	});
+
+	it('coalescing dedupes concurrent calls with same key', async () => {
+		const P = configure({ coalesce: { enabled: true } });
+		let calls = 0;
+		const fetcher = () => P.fromAsync(async () => {
+			calls++;
+			await sleep(10);
+			return 'value';
+		}, { key: 'same' });
+		const [a, b, c] = await Promise.all([fetcher(), fetcher(), fetcher()]);
+		assert.deepStrictEqual([a, b, c], ['value', 'value', 'value']);
+		assert.strictEqual(calls, 1);
+	});
+
+	it('coalescing ttl caches settled success and expires later', async () => {
+		const P = configure({ coalesce: { enabled: true, ttl: 30 } });
+		let calls = 0;
+		const run = () => P.fromAsync(async () => {
+			calls++;
+			return calls;
+		}, { key: 'ttl-key' });
+
+		const a = await run();
+		const b = await run();
+		await sleep(40);
+		const c = await run();
+
+		assert.strictEqual(a, 1);
+		assert.strictEqual(b, 1);
+		assert.strictEqual(c, 2);
+	});
+
+	it('coalescing with shareErrors=false does not cache rejection', async () => {
+		const P = configure({ coalesce: { enabled: true, shareErrors: false, ttl: 100 } });
+		let calls = 0;
+		const run = () => P.fromAsync(async () => {
+			calls++;
+			throw new Error('boom');
+		}, { key: 'err-key' });
+
+		await run().orElse(() => null);
+		await run().orElse(() => null);
+		assert.strictEqual(calls, 2);
+	});
+});
+
 describe('Pipe.lift()', () => {
 	it('returns a function that produces a Pipe', async () => {
 		const double = Pipe.lift(n => n * 2);
@@ -886,7 +1031,7 @@ describe('security invariants', () => {
 	});
 
 	it('$$p_ Symbol is NOT exported from the module', async () => {
-		const mod = await import('./pipe.mjs');
+		const mod = await import('../pipe.mjs');
 		const exportedSymbols = Object.values(mod).filter(v => typeof v === 'symbol');
 		assert.strictEqual(exportedSymbols.length, 0, 'no Symbol should be exported');
 	});

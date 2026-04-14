@@ -1,6 +1,6 @@
 {
 	"name": "promised-pipes",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Elegant async pipelines that flow, transform, and recover without the noise.",
 	"license": "MIT",
 	"author": "Prakhar-Srivastava",
@@ -20,6 +20,11 @@
 	"scripts": {
 		"test": "node --test tests/pipe.test.mjs",
 		"test:watch": "node --test --watch tests/pipe.test.mjs",
+		"bench": "node bench/index.mjs",
+		"docs:build": "typedoc --options typedoc.json",
+		"docs:watch": "typedoc --options typedoc.json --watch",
+		"check:types": "tsc --project tsconfig.check.json",
+		"samples": "node samples/01-basics.mjs && node samples/02-error-channel.mjs && node samples/03-retry-factory.mjs && node samples/04-configure-limits.mjs && node samples/05-abort-signal.mjs && node samples/06-concurrency-pool.mjs && node samples/07-coalesce-by-key.mjs",
 		"build": "mkdir -p dist && esbuild pipe.mjs --bundle --minify --sourcemap --format=esm --target=es2020 --platform=browser --outfile=dist/pipe.min.mjs",
 		"build:iife": "mkdir -p dist && esbuild pipe.mjs --bundle --minify --sourcemap --format=iife --target=es2018 --platform=browser --global-name=Pipe --outfile=dist/pipe.global.js",
 		"build:wasm": "mkdir -p dist && esbuild targets/pipe.wasm.js --bundle --minify --format=esm --outfile=dist/pipe.wasm.mjs --target=es2020 --platform=neutral",
@@ -42,6 +47,8 @@
 		"url": "https://github.com/Prakhar-Srivastava/promised-pipes"
 	},
 	"devDependencies": {
-		"esbuild": "^0.28.0"
+		"esbuild": "^0.28.0",
+		"typedoc": "^0.28.0",
+		"typescript": "~5.7.0"
 	}
 }

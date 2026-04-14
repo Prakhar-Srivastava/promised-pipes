@@ -83,6 +83,9 @@ out
 dist
 .output
 
+# TypeDoc generated API reference (run npm run docs:build)
+docs/api
+
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js

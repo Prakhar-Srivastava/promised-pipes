@@ -1,56 +1,49 @@
-import { bench, ITER } from './core.bench.mjs';
 import { configure } from '../pipe.mjs';
+import { bench, section } from './lib/runner.mjs';
 
-const tries = 10;
+const ITER = 5_000;
+const tries = 5;
 const Pipe = configure({ maxAttempts: tries, maxDelay: 0 });
 
 const fakeFetch = () =>
-    new Promise((resolve, reject) => {
-        if (10 * Math.random() < 10 * Math.random()) reject(new Error('Fail cuz lolz!'));
-        else resolve(10.0 * Math.random());
-    });
+	new Promise((resolve, reject) => {
+		if (10 * Math.random() < 10 * Math.random()) reject(new Error('transient'));
+		else resolve(10.0 * Math.random());
+	});
 
 export default async function run() {
-    await Promise.all([
-        // Manual retry
-        bench('Manual retry', async () => {
-            for (let i = 0; i < ITER; i++) {
-                let attempts = 0;
-                while (attempts < tries) {
-                    try {
-                        console.log(`🚹 Attempting fetch[${i + 1}/${ITER}] (${attempts + 1} of ${tries})...`);
-                        const result = await fakeFetch();
-                        console.log(`🚹 Fetch Returned[${i + 1}/${ITER}]! ${result}`);
-                        break;
-                    } catch (error) {
-                        console.error(`🚹⛔️ Fetch(${i + 1}/${ITER}) failed[${attempts + 1}]! ${error.message}`, error);
-                        attempts++;
-                    }
-                }
-                if (attempts === tries) console.log(`🚹⛔️ Fetch Returned[${i + 1}/${ITER}]!  null`);
-                else console.log(`🚹 Fetch(${i + 1}/${ITER}) recovered after ${attempts + 1} attempts!`);
-            }
-        }),
+	section('pipeline');
 
-        // Pipe retryWhen
-        bench('Pipe retryWhen', async () => {
-            for (let i = 0; i < ITER; i++) {
-                console.log(`߷ Attempting fetch[${i + 1}/${ITER}]...`);
-                const awaitedResult = await Pipe.fromAsync(fakeFetch)
-                    .tap(tappedResult => console.log(`߷ Fetch successful[${i + 1}/${ITER}]! ${tappedResult}`))
-                    .tapError(error => console.error(`߷⛔️ Fetch(${i + 1}/${ITER}) failed! Retrying... ${error.message}`, error))
-                    .retryWhen(() => true, { attempts: tries, delay: 0, jitter: false })
-                    .orRecover(() => {
-                        console.log(`߷⛔️ Fetch(${i + 1}/${ITER}) failed all attempts! Recovering...`);
-                        return fakeFetch();
-                    })
-                    .orElse(() => null);
-                console.log(`߷ Fetch Returned[${i + 1}/${ITER}]! ${awaitedResult}`);
-            }
-        }),
-    ]);
+	await bench('Manual retry', async () => {
+		let nulls = 0;
+		for (let i = 0; i < ITER; i++) {
+			let attempts = 0;
+			let value = null;
+			while (attempts < tries) {
+				try {
+					value = await fakeFetch();
+					break;
+				} catch {
+					attempts++;
+				}
+			}
+			nulls += value === null ? 1 : 0;
+		}
+		return nulls;
+	});
+
+	await bench('Pipe retryWhen', async () => {
+		let nulls = 0;
+		for (let i = 0; i < ITER; i++) {
+			const value = await Pipe.fromAsync(fakeFetch)
+				.retryWhen(() => true, { attempts: tries - 1, delay: 0, jitter: false })
+				.orElse(() => null);
+			nulls += value === null ? 1 : 0;
+		}
+		return nulls;
+	});
 }
 
-if (import.meta.main) {
-    await run();
+if (import.meta.url === `file://${process.argv[1]}`) {
+	await run();
 }

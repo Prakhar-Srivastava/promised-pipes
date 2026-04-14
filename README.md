@@ -4,6 +4,8 @@
 
 A monadic Promise proxy for vanilla JavaScript. Wraps async values in a chainable, fully thenable interface — `await`-able, `Promise.all`-compatible, and Symbol-transparent — without abandoning the native Promise ecosystem.
 
+v0.2 adds opt-in configured variants for abort-aware execution, bounded concurrency pools, and promise coalescing while preserving v0.1 default behavior.
+
 Every entry point validates its arguments synchronously. Bad inputs throw before entering the Promise chain, giving you stack traces that point at your code, not at anonymous `.then()` handlers inside the library.
 
 ```js
@@ -25,6 +27,8 @@ const orders = await Pipe.fromAsync(fetchOrders)
 
 - [Installation](#installation)
 - [Quick start](#quick-start)
+- [Samples](#samples)
+- [API documentation (generated)](#api-documentation-generated)
 - [Core concepts](#core-concepts)
 - [API reference](#api-reference)
   - [Static constructors](#static-constructors)
@@ -33,10 +37,14 @@ const orders = await Pipe.fromAsync(fetchOrders)
   - [Resilience](#resilience)
   - [Collection](#collection)
 - [Configuration](#configuration)
+- [Behavioral guarantees (v0.2)](#behavioral-guarantees-v02)
 - [TypeScript](#typescript)
 - [Security model](#security-model)
 - [Known limitations](#known-limitations)
 - [Running the tests](#running-the-tests)
+- [Contributing](#contributing)
+- [Authoring docs](#authoring-docs)
+- [License](#license)
 
 ---
 
@@ -50,15 +58,59 @@ Requires Node.js ≥ 18. No runtime dependencies.
 
 ---
 
+## Samples
+
+Runnable examples live under [`samples/`](./samples/). From a git checkout:
+
+```sh
+node samples/01-basics.mjs
+# or run all samples
+npm run samples
+```
+
+See [`samples/README.md`](./samples/README.md) for the full index (basics, errors, retry, configure, abort, pool, coalesce).
+
+---
+
+## API documentation (generated)
+
+HTML API reference is generated from [`pipe.d.ts`](./pipe.d.ts) with [TypeDoc](https://typedoc.org/):
+
+```sh
+npm install          # once, installs devDependencies including typedoc
+npm run docs:build   # writes to docs/api/ (gitignored)
+```
+
+Open `docs/api/index.html` in a browser. While editing types:
+
+```sh
+npm run docs:watch
+```
+
+Declaration sanity check (no emit):
+
+```sh
+npm run check:types
+```
+
+---
+
 ## Quick start
 
 ```js
 // Zero-config — default operational limits
 import Pipe from 'promised-pipes';
 
-// Custom limits
+// Custom limits + optional v0.2 execution policies
 import { configure } from 'promised-pipes';
-const Pipe = configure({ maxTimeout: 60_000, maxAttempts: 5, maxDelay: 5_000 });
+const Pipe = configure({
+  maxTimeout: 60_000,
+  maxAttempts: 5,
+  maxDelay: 5_000,
+  abort: { enabled: true },
+  pool: { enabled: true, limit: 8, maxQueue: 1_000 },
+  coalesce: { enabled: true, ttl: 500, shareErrors: false },
+});
 ```
 
 Every `Pipe` instance is a native `Promise` proxy. You can `await` it, pass it to `Promise.all`, and chain `.then` / `.catch` / `.finally` directly — no adapter, no `.toPromise()` escape hatch needed.
@@ -144,15 +196,24 @@ Lift an existing Promise or thenable into Pipe-land.
 const pipe = Pipe.from(fetch('/api/data').then(r => r.json()));
 ```
 
-#### `Pipe.fromAsync(factory)`
+#### `Pipe.fromAsync(factory, opts?)`
 
 Construct a Pipe from a zero-argument async factory. The factory is called immediately.
+
+- `opts.signal` (requires `configure({ abort: { enabled: true } })`) enables abort-aware execution.
+- `opts.key` (requires `configure({ coalesce: { enabled: true } })`) enables keyed coalescing.
 
 > **Important for `.retryWhen`:** Use `Pipe.fromAsync(factory).retryWhen(...)` rather than `.map(fn).retryWhen(...)`. Retries re-run the current Promise value — the factory must be the upstream for retries to re-execute the operation.
 
 ```js
 Pipe.fromAsync(() => fetch('/api/orders').then(r => r.json()))
   .retryWhen(e => e.status === 503, { attempts: 3 });
+
+const ctrl = new AbortController();
+await Pipe.fromAsync(
+  signal => fetch('/api/orders', { signal }).then(r => r.json()),
+  { signal: ctrl.signal, key: 'orders:latest' },
+);
 ```
 
 #### `Pipe.fromCallback(fn, ...args)`
@@ -437,7 +498,40 @@ const Pipe = configure({
 });
 
 console.log(Pipe.config);
-// { maxTimeout: 60000, maxAttempts: 5, maxDelay: 5000 }
+// {
+//   maxTimeout: 60000,
+//   maxAttempts: 5,
+//   maxDelay: 5000,
+//   abort: { enabled: false },
+//   pool: { enabled: false, limit: 8, maxQueue: Infinity },
+//   coalesce: { enabled: false, ttl: 0, shareErrors: false }
+// }
+```
+
+v0.2 additional config groups:
+
+| Group | Defaults | Purpose |
+|---|---|---|
+| `abort` | `{ enabled: false }` | Enable `fromAsync(..., { signal })` and `AbortError` rejection behavior. |
+| `pool` | `{ enabled: false, limit: 8, maxQueue: Infinity }` | Bound in-flight `fromAsync` concurrency with queue backpressure. |
+| `coalesce` | `{ enabled: false, ttl: 0, shareErrors: false }` | Deduplicate keyed `fromAsync` calls; optional settle-cache TTL. |
+
+**Pool** — cap concurrent `fromAsync` work (e.g. limit upstream pressure):
+
+```js
+const Pipe = configure({ pool: { enabled: true, limit: 4, maxQueue: 100 } });
+await Promise.all(urls.map((u) =>
+  Pipe.fromAsync(() => fetch(u).then((r) => r.text())),
+));
+```
+
+**Coalesce** — share one in-flight promise per `key` (optional TTL ms after success; `shareErrors` controls whether a failed attempt is cached for TTL):
+
+```js
+const Pipe = configure({ coalesce: { enabled: true, ttl: 500, shareErrors: false } });
+const a = Pipe.fromAsync(() => load('x'), { key: 'resource:x' });
+const b = Pipe.fromAsync(() => load('x'), { key: 'resource:x' }); // shares with `a` while in-flight
+await Promise.all([a, b]);
 ```
 
 Bad limit values throw `PipeError` synchronously at `configure()` time — not silently at the first `.timeout()` or `.retryWhen()` call.
@@ -452,6 +546,15 @@ Each `configure()` call produces a fully independent instance — its own intern
 
 ---
 
+## Behavioral guarantees (v0.2)
+
+- **Default export** — `import Pipe from 'promised-pipes'` remains the pre-configured API; existing chains keep working without new options.
+- **Opt-in execution policies** — `abort`, `pool`, and `coalesce` affect behavior only when enabled via `configure(...)` and used with the documented `fromAsync` options.
+- **Immutability** — instances and the configured API object stay frozen; methods return new pipes.
+- **Guards** — invalid arguments still throw `PipeError` synchronously at the call site where applicable.
+
+---
+
 ## TypeScript
 
 `pipe.d.ts` ships with the package and is wired up automatically via the `"types"` field in `package.json`.
@@ -460,6 +563,7 @@ Each `configure()` call produces a fully independent instance — its own intern
 import Pipe, {
   configure,
   TimeoutError,
+  AbortError,
   PipeError,
   DEFAULT_MAX_TIMEOUT,
   type Pipe as PipeType,
@@ -527,13 +631,13 @@ If the function passed to `.tapError` throws, that secondary exception is discar
 
 ## Known limitations
 
-These are deliberate scope decisions for v0.1.0, not oversights:
+These are deliberate scope decisions for v0.2.0, not oversights:
 
 **`.retryWhen` re-runs the current Promise, not a factory.** If you need retries to re-execute a network call, the factory must be the upstream: `Pipe.fromAsync(factory).retryWhen(...)`. Chaining `.retryWhen` after `.map` or `.chain` will retry the already-settled value, not re-invoke the original operation.
 
-**No cancellation / AbortController integration.** Promises are not cancellable. Cancellation requires AbortController coordination at the call site — the library deliberately does not bolt this on.
+**Abort only cooperates with abort-aware code.** The library can reject early with `AbortError`, but underlying async work must honor `AbortSignal` to stop external IO.
 
-**No `Pipe.memoize`.** Cache invalidation and async deduplication interact in subtle ways (stale entries, concurrent request coalescing). This is out of scope for the core library.
+**Coalescing is key-based and opt-in per call.** `fromAsync` only deduplicates when `{ key }` is provided and coalescing is enabled.
 
 **TypeScript types ship as JSDoc-inferred declarations, not `tsc`-generated.** If you encounter a type gap, please open an issue.
 
@@ -549,52 +653,31 @@ npm test
 
 # Watch mode
 npm run test:watch
+
+# Benchmarks
+npm run bench
+
+# API docs (TypeDoc) and declaration check
+npm run docs:build
+npm run check:types
 ```
 
-```
-# tests    161
-# suites    30
-# pass     161
-# fail        0
-```
+`npm test` prints an up-to-date summary (tests / suites / pass / fail). Suites and cases live in [`tests/pipe.test.mjs`](./tests/pipe.test.mjs).
 
-**Coverage by suite:**
+---
 
-| Suite | Tests |
-|---|---|
-| Module exports & constants | 10 |
-| `configure()` validation | 12 |
-| Monad laws | 3 |
-| `.map` | 6 |
-| `.chain` | 4 |
-| `.mapTo` | 3 |
-| `.tap` | 4 |
-| `.orElse` | 5 |
-| `.orFail` | 4 |
-| `.orRecover` | 3 |
-| `.tapError` | 5 |
-| `.timeout` | 11 |
-| `.retryWhen` | 6 |
-| `.merge` | 6 |
-| `.sort` | 6 |
-| `Pipe.traverse` | 6 |
-| `Pipe.of` | 4 |
-| `Pipe.reject` | 2 |
-| `Pipe.from` | 6 |
-| `Pipe.fromAsync` | 3 |
-| `Pipe.lift` | 4 |
-| `Pipe.all` | 4 |
-| `Pipe.race` | 3 |
-| `Pipe.allSettled` | 2 |
-| `Pipe.fromCallback` | 5 |
-| Promise proxy | 9 |
-| Security invariants | 6 |
-| `configure()` isolation | 2 |
-| Fibonacci state machine | 10 |
-| Full pipeline integration | 7 |
+## Contributing
+
+See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for workflow, commands, and PR expectations. A short alias lives at **[CONTRIBUTION.md](./CONTRIBUTION.md)**.
+
+---
+
+## Authoring docs
+
+Conventions for README, samples, and TypeDoc output are in **[AUTHORING.md](./AUTHORING.md)**.
 
 ---
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see [`LICENSE`](./LICENSE).

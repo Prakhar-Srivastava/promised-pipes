@@ -1,5 +1,5 @@
 /**
- * @fileoverview pipe.mjs — v0.1.0
+ * @fileoverview pipe.mjs — v0.2.0
  *
  * Elegant async pipelines that flow, transform, and recover without the noise.
  *
@@ -9,7 +9,7 @@
  * before entering the Promise chain — clean stack traces, not buried TypeErrors.
  *
  * @module pipe
- * @version 0.1.0
+ * @version 0.2.0
  *
  * @example <caption>Zero-config import</caption>
  * import Pipe from './pipe.mjs';
@@ -44,7 +44,7 @@ export const DEFAULT_MAX_ATTEMPTS = 20;
 export const DEFAULT_MAX_DELAY = 30_000;
 
 /** @type {string} Current library version. */
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 
 // ── Internal Symbol ────────────────────────────────────────────────────────────
 // $$p_ is the key under which each Pipe instance stores its underlying Promise.
@@ -134,6 +134,22 @@ export class PipeError extends TypeError {
 }
 
 /**
+ * Rejection reason used when an abort-aware execution is cancelled.
+ *
+ * @extends {Error}
+ */
+export class AbortError extends Error {
+	/**
+	 * @param {unknown} [reason]
+	 */
+	constructor(reason) {
+		super('Pipe execution aborted');
+		this.name = 'AbortError';
+		this.reason = reason;
+	}
+}
+
+/**
  * Internal throw helper. Unified entry point so every guard produces a
  * `PipeError` and nothing else escapes as a raw `Error` or `TypeError`.
  *
@@ -154,6 +170,26 @@ const __throw$ = (msg) => { throw new PipeError(msg); };
  */
 const assertFn = (v, n) =>
 	typeof v === 'function' ? v : __throw$(`${n}: expected a function`);
+
+/**
+ * Assert plain object-ish value (non-null object).
+ *
+ * @param {unknown} v
+ * @param {string} n
+ * @returns {object}
+ */
+const assertObject = (v, n) =>
+	v && typeof v === 'object' ? v : __throw$(`${n}: expected an object`);
+
+/**
+ * Assert boolean when provided.
+ *
+ * @param {unknown} v
+ * @param {string} n
+ * @returns {boolean}
+ */
+const assertBoolean = (v, n) =>
+	typeof v === 'boolean' ? v : __throw$(`${n}: expected a boolean`);
 
 /**
  * Assert that `v` is a finite positive integer within the configured timeout
@@ -190,6 +226,20 @@ const assertArray = (v, n) =>
 	Array.isArray(v) && v !== Array.prototype
 		? v
 		: __throw$(`${n}: expected an Array`);
+
+/**
+ * Assert AbortSignal-ish value.
+ *
+ * @param {unknown} signal
+ * @returns {AbortSignal}
+ */
+const assertAbortSignal = (signal) =>
+	(signal && typeof signal === 'object'
+		&& typeof signal.aborted === 'boolean'
+		&& typeof signal.addEventListener === 'function'
+		&& typeof signal.removeEventListener === 'function')
+		? signal
+		: __throw$('fromAsync signal: expected an AbortSignal');
 
 // ── Proto factory ──────────────────────────────────────────────────────────────
 
@@ -695,6 +745,9 @@ export const configure = (opts = {}) => {
 		maxTimeout = DEFAULT_MAX_TIMEOUT,
 		maxAttempts = DEFAULT_MAX_ATTEMPTS,
 		maxDelay = DEFAULT_MAX_DELAY,
+		abort: abortCfgRaw = {},
+		pool: poolCfgRaw = {},
+		coalesce: coalesceCfgRaw = {},
 	} = opts;
 
 	// maxDelay may legitimately be 0 (no pause between retries), so its check
@@ -709,10 +762,206 @@ export const configure = (opts = {}) => {
 	) if (!isNatural(value)) __throw$(`configure: ${key} must be a positive integer`);
 
 	if (!isNonNeg(maxDelay)) __throw$('configure: maxDelay must be a non-negative integer');
+	assertObject(abortCfgRaw, 'configure: abort');
+	assertObject(poolCfgRaw, 'configure: pool');
+	assertObject(coalesceCfgRaw, 'configure: coalesce');
 
-	const cfg = Object.freeze({ maxTimeout, maxAttempts, maxDelay });
+	const abortEnabled = abortCfgRaw.enabled === undefined
+		? false
+		: assertBoolean(abortCfgRaw.enabled, 'configure: abort.enabled');
+	const poolEnabled = poolCfgRaw.enabled === undefined
+		? false
+		: assertBoolean(poolCfgRaw.enabled, 'configure: pool.enabled');
+	const poolLimit = poolCfgRaw.limit === undefined
+		? 8
+		: (isNatural(poolCfgRaw.limit)
+			? poolCfgRaw.limit
+			: __throw$('configure: pool.limit must be a positive integer'));
+	const poolMaxQueue = poolCfgRaw.maxQueue === undefined
+		? Infinity
+		: ((poolCfgRaw.maxQueue === Infinity || isNonNeg(poolCfgRaw.maxQueue))
+			? poolCfgRaw.maxQueue
+			: __throw$('configure: pool.maxQueue must be a non-negative integer or Infinity'));
+
+	const coalesceEnabled = coalesceCfgRaw.enabled === undefined
+		? false
+		: assertBoolean(coalesceCfgRaw.enabled, 'configure: coalesce.enabled');
+	const coalesceTtl = coalesceCfgRaw.ttl === undefined
+		? 0
+		: (isNonNeg(coalesceCfgRaw.ttl)
+			? coalesceCfgRaw.ttl
+			: __throw$('configure: coalesce.ttl must be a non-negative integer'));
+	const coalesceShareErrors = coalesceCfgRaw.shareErrors === undefined
+		? false
+		: assertBoolean(coalesceCfgRaw.shareErrors, 'configure: coalesce.shareErrors');
+
+	const cfg = Object.freeze({
+		maxTimeout,
+		maxAttempts,
+		maxDelay,
+		abort: Object.freeze({ enabled: abortEnabled }),
+		pool: Object.freeze({
+			enabled: poolEnabled,
+			limit: poolLimit,
+			maxQueue: poolMaxQueue,
+		}),
+		coalesce: Object.freeze({
+			enabled: coalesceEnabled,
+			ttl: coalesceTtl,
+			shareErrors: coalesceShareErrors,
+		}),
+	});
 	const Proto = __define_proto$(cfg);
 	const makePipe = Proto.makePipe.bind(Proto);
+	const coalesced = new Map();
+
+	/**
+	 * Run task under optional AbortSignal.
+	 *
+	 * @param {AbortSignal|undefined} signal
+	 * @param {function(): Promise<*>} task
+	 * @returns {Promise<*>}
+	 */
+	const withAbort = (signal, task) => {
+		if (!signal) return Promise.resolve().then(task);
+		if (signal.aborted) return Promise.reject(new AbortError(signal.reason));
+		return new Promise((resolve, reject) => {
+			let settled = false;
+			const cleanup = () => signal.removeEventListener('abort', onAbort);
+			const onAbort = () => {
+				if (settled) return;
+				settled = true;
+				cleanup();
+				reject(new AbortError(signal.reason));
+			};
+			signal.addEventListener('abort', onAbort, { once: true });
+			Promise.resolve()
+				.then(task)
+				.then(
+					v => {
+						if (settled) return;
+						settled = true;
+						cleanup();
+						resolve(v);
+					},
+					e => {
+						if (settled) return;
+						settled = true;
+						cleanup();
+						reject(e);
+					},
+				);
+		});
+	};
+
+	/**
+	 * Build a bounded pool scheduler.
+	 *
+	 * @param {number} limit
+	 * @param {number} maxQueue
+	 * @returns {(task: Function, signal?: AbortSignal) => Promise<*>}
+	 */
+	const __make_pool_scheduler$ = (limit, maxQueue) => {
+		if (!poolEnabled) return (task, signal) => withAbort(signal, task);
+		let active = 0;
+		const queue = [];
+		const dequeue = () => {
+			while (active < limit && queue.length) {
+				const entry = queue.shift();
+				if (entry.cancelled) continue;
+				active++;
+				entry.cleanup?.();
+				withAbort(entry.signal, entry.task)
+					.then(entry.resolve, entry.reject)
+					.finally(() => {
+						active--;
+						dequeue();
+					});
+			}
+		};
+		return (task, signal) => new Promise((resolve, reject) => {
+			if (signal?.aborted) return reject(new AbortError(signal.reason));
+			if (active < limit) {
+				active++;
+				return withAbort(signal, task)
+					.then(resolve, reject)
+					.finally(() => {
+						active--;
+						dequeue();
+					});
+			}
+			if (maxQueue !== Infinity && queue.length >= maxQueue) {
+				return reject(new PipeError('pool: queue limit exceeded'));
+			}
+			const entry = {
+				task,
+				signal,
+				resolve,
+				reject,
+				cancelled: false,
+				cleanup: null,
+			};
+			if (signal) {
+				const onAbort = () => {
+					entry.cancelled = true;
+					signal.removeEventListener('abort', onAbort);
+					reject(new AbortError(signal.reason));
+				};
+				entry.cleanup = () => signal.removeEventListener('abort', onAbort);
+				signal.addEventListener('abort', onAbort, { once: true });
+			}
+			queue.push(entry);
+		});
+	};
+
+	const runPooled = __make_pool_scheduler$(poolLimit, poolMaxQueue);
+
+	const trackCoalesced = (key, promise, keepOnReject) => {
+		const deleteIfCurrent = () => {
+			const current = coalesced.get(key);
+			if (current?.promise === promise) coalesced.delete(key);
+		};
+		const keepForTtl = () => {
+			if (coalesceTtl <= 0) return deleteIfCurrent();
+			const timer = setTimeout(deleteIfCurrent, coalesceTtl);
+			typeof timer.unref === 'function' && timer.unref();
+			const current = coalesced.get(key);
+			current?.promise === promise && (current.timer = timer);
+		};
+		promise.then(
+			() => keepForTtl(),
+			() => keepOnReject ? keepForTtl() : deleteIfCurrent(),
+		);
+	};
+
+	const runWithCoalescing = (key, task) => {
+		const existing = coalesced.get(key);
+		if (existing) return existing.promise;
+		const promise = Promise.resolve().then(task);
+		coalesced.set(key, { promise, timer: null });
+		trackCoalesced(key, promise, coalesceShareErrors);
+		return promise;
+	};
+
+	const makeFromAsync = (source, runOpts = {}) => {
+		const optsObj = runOpts === undefined ? {} : assertObject(runOpts, 'fromAsync options');
+		const signal = optsObj.signal === undefined ? undefined : assertAbortSignal(optsObj.signal);
+		if (signal && !abortEnabled) {
+			__throw$('fromAsync: signal requires configure({ abort: { enabled: true } })');
+		}
+		if (optsObj.key !== undefined && !coalesceEnabled) {
+			__throw$('fromAsync: key requires configure({ coalesce: { enabled: true } })');
+		}
+		const runOnce = () => {
+			const task = () => Promise.resolve(source(signal));
+			const execute = () => (poolEnabled ? runPooled(task, signal) : withAbort(signal, task));
+			if (coalesceEnabled && optsObj.key !== undefined) {
+				return runWithCoalescing(optsObj.key, execute);
+			}
+			return execute();
+		};
+		return makePipe(runOnce(), runOnce);
+	};
 
 	return Object.freeze({
 		/** @type {string} Library version. */
@@ -722,7 +971,7 @@ export const configure = (opts = {}) => {
 		 * Resolved operational limits for this instance.
 		 * Inspect after construction to verify what you got.
 		 *
-		 * @type {{ maxTimeout: number, maxAttempts: number, maxDelay: number }}
+		 * @type {{ maxTimeout: number, maxAttempts: number, maxDelay: number, abort: object, pool: object, coalesce: object }}
 		 */
 		config: cfg,
 
@@ -772,7 +1021,10 @@ export const configure = (opts = {}) => {
 		 * Use this (not `.map`) as the entry point for `.retryWhen` — retries
 		 * re-run the upstream Promise, so the factory must be the upstream.
 		 *
-		 * @param {function(): Promise<*>} fn - Zero-argument async factory.
+		 * @param {function((AbortSignal|undefined)?): Promise<*>} fn - Async factory.
+		 *   Receives `signal` when `configure({ abort: { enabled: true } })` and
+		 *   `fromAsync(fn, { signal })` are used; otherwise `undefined`.
+		 * @param {object} [runOpts={}] - Optional `{ signal, key }` (see configure()).
 		 * @returns {Proto}
 		 * @throws {PipeError} Synchronously, if `fn` is not a function.
 		 *
@@ -780,9 +1032,9 @@ export const configure = (opts = {}) => {
 		 * Pipe.fromAsync(() => fetch('/api/orders').then(r => r.json()))
 		 *   .retryWhen(e => e.status === 503, { attempts: 3 });
 		 */
-		fromAsync: (fn) => {
+		fromAsync: (fn, runOpts = {}) => {
 			const source = assertFn(fn, 'fromAsync');
-			return makePipe(source(), source);
+			return makeFromAsync(source, runOpts);
 		},
 
 		/**

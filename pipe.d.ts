@@ -1,5 +1,5 @@
 /**
- * @fileoverview pipe.d.ts — v0.1.0
+ * @fileoverview pipe.d.ts — v0.2.0
  *
  * Type declarations for pipe.mjs.
  *
@@ -24,7 +24,7 @@ export declare const DEFAULT_MAX_ATTEMPTS: 20;
 export declare const DEFAULT_MAX_DELAY: 30_000;
 
 /** Current library version. */
-export declare const VERSION: '0.1.0';
+export declare const VERSION: '0.2.0';
 
 // ── Sentinel error types ───────────────────────────────────────────────────────
 
@@ -66,6 +66,15 @@ export declare class PipeError extends TypeError {
 	constructor(msg: string);
 }
 
+/**
+ * Rejection reason used when an abort-aware execution is cancelled.
+ */
+export declare class AbortError extends Error {
+	readonly name: 'AbortError';
+	readonly reason: unknown;
+	constructor(reason?: unknown);
+}
+
 // ── configure() options ────────────────────────────────────────────────────────
 
 /**
@@ -91,6 +100,31 @@ export interface ConfigureOptions {
 	 * Default: `30_000` (30 seconds).
 	 */
 	maxDelay?: number;
+
+	/** Optional abort behavior for fromAsync execution. */
+	abort?: AbortConfig;
+
+	/** Optional bounded-concurrency pool for fromAsync execution. */
+	pool?: PoolConfig;
+
+	/** Optional in-flight coalescing for keyed fromAsync calls. */
+	coalesce?: CoalesceConfig;
+}
+
+export interface AbortConfig {
+	enabled?: boolean;
+}
+
+export interface PoolConfig {
+	enabled?: boolean;
+	limit?: number;
+	maxQueue?: number;
+}
+
+export interface CoalesceConfig {
+	enabled?: boolean;
+	ttl?: number;
+	shareErrors?: boolean;
 }
 
 /** Resolved, frozen configuration snapshot returned on `Pipe.config`. */
@@ -98,6 +132,14 @@ export interface ResolvedConfig {
 	readonly maxTimeout: number;
 	readonly maxAttempts: number;
 	readonly maxDelay: number;
+	readonly abort: Readonly<Required<AbortConfig>>;
+	readonly pool: Readonly<{ enabled: boolean; limit: number; maxQueue: number }>;
+	readonly coalesce: Readonly<{ enabled: boolean; ttl: number; shareErrors: boolean }>;
+}
+
+export interface FromAsyncOptions {
+	signal?: AbortSignal;
+	key?: unknown;
 }
 
 // ── retryWhen options ──────────────────────────────────────────────────────────
@@ -393,7 +435,7 @@ export interface PipeAPI {
 	 * Pipe.fromAsync(() => fetch('/api/orders').then(r => r.json()))
 	 *   .retryWhen(e => e.status === 503, { attempts: 3 });
 	 */
-	fromAsync<A>(fn: () => Promise<A>): Pipe<A>;
+	fromAsync<A>(fn: (signal?: AbortSignal) => Promise<A>, opts?: FromAsyncOptions): Pipe<A>;
 
 	/**
 	 * Lift a plain function into a Pipe-returning form.
