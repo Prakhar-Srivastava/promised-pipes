@@ -241,6 +241,8 @@ const __define_proto$ = (cfg = {}) => {
 		 * @type {WeakMap<Promise, Record<string, Function>>}
 		 */
 		static #__bind_cache_ = new WeakMap();
+		/** @type {WeakMap<Promise, Function>} Replay source for retry-capable pipes. */
+		static #__retry_source_ = new WeakMap();
 
 		/**
 		 * The real factory. Private so that no external code can construct a Pipe
@@ -266,8 +268,9 @@ const __define_proto$ = (cfg = {}) => {
 		 *   `Promise.resolve()`. Native Promises bypass the extra microtask tick.
 		 * @returns {Proxy} A Pipe instance proxying the resolved Promise.
 		 */
-		static #__make_pipe$(promise) {
+		static #__make_pipe$(promise, retrySource) {
 			const p = promise?.constructor === Promise ? promise : Promise.resolve(promise);
+			typeof retrySource === 'function' && Proto.#__retry_source_.set(p, retrySource);
 			const instance = Object.create(Proto.prototype);
 			instance[$$p_] = p;   // Symbol key — unguessable, collision-free
 
@@ -307,7 +310,7 @@ const __define_proto$ = (cfg = {}) => {
 		 * @param {Promise|*} promise
 		 * @returns {Proxy} A Pipe instance.
 		 */
-		static makePipe(promise) { return Proto.#__make_pipe$(promise); }
+		static makePipe(promise, retrySource) { return Proto.#__make_pipe$(promise, retrySource); }
 
 		// ── Core monad ────────────────────────────────────────────────────────
 		// These four methods form the functor/monad core.
@@ -379,7 +382,11 @@ const __define_proto$ = (cfg = {}) => {
 		 */
 		tap(fn) {
 			assertFn(fn, 'tap');
-			return Proto.#__make_pipe$(this[$$p_].then(v => (fn(v), v)));
+			const next = this[$$p_].then(v => (fn(v), v));
+			const retrySource = Proto.#__retry_source_.get(this[$$p_]);
+			return retrySource
+				? Proto.#__make_pipe$(next, retrySource)
+				: Proto.#__make_pipe$(next);
 		}
 
 		// ── Error channel ──────────────────────────────────────────────────────
@@ -459,10 +466,14 @@ const __define_proto$ = (cfg = {}) => {
 		 */
 		tapError(fn) {
 			assertFn(fn, 'tapError');
-			return Proto.#__make_pipe$(this[$$p_].catch(e => {
+			const next = this[$$p_].catch(e => {
 				try { fn(e); } catch (_) { /* fn threw — discard, preserve original */ }
 				return Promise.reject(e);
-			}));
+			});
+			const retrySource = Proto.#__retry_source_.get(this[$$p_]);
+			return retrySource
+				? Proto.#__make_pipe$(next, retrySource)
+				: Proto.#__make_pipe$(next);
 		}
 
 		// ── Resilience ────────────────────────────────────────────────────────
@@ -546,19 +557,34 @@ const __define_proto$ = (cfg = {}) => {
 			const delay = Math.min(maxDelay, Math.max(0,
 				Number.isFinite(opts.delay) ? opts.delay : 200));
 			const jitter = opts.jitter !== false;
+			const retrySource = Proto.#__retry_source_.get(this[$$p_]);
 
-			const run = (remaining, lastDelay) =>
-				Proto.#__make_pipe$(this[$$p_].catch(e =>
-					remaining <= 0 || !predicate(e, attempts - remaining + 1)
-						? Promise.reject(e)
-						: new Promise(res => setTimeout(res,
+			const __make_retry_promise$ = () => {
+				if (typeof retrySource !== 'function') return this[$$p_];
+				try { return Promise.resolve(retrySource()); }
+				catch (err) { return Promise.reject(err); }
+			};
+
+			const run = (remaining, lastDelay, currentPromise) =>
+				Proto.#__make_pipe$(currentPromise.catch(e =>
+					((() => {
+						const attemptNumber = attempts - remaining + 1;
+						const shouldRetry = !(remaining <= 0) && !!predicate(e, attemptNumber);
+						return shouldRetry;
+					})())
+						? new Promise(res => setTimeout(res,
 							jitter
 								? lastDelay * (0.75 + Math.random() * 0.5)
 								: lastDelay))
-							.then(() => run(remaining - 1, Math.min(lastDelay * 2, maxDelay))[$$p_])
+							.then(() => run(
+								remaining - 1,
+								Math.min(lastDelay * 2, maxDelay),
+								__make_retry_promise$(),
+							)[$$p_])
+						: Promise.reject(e)
 				));
 
-			return run(attempts, delay);
+			return run(attempts, delay, this[$$p_]);
 		}
 
 		// ── Collection ────────────────────────────────────────────────────────
@@ -754,7 +780,10 @@ export const configure = (opts = {}) => {
 		 * Pipe.fromAsync(() => fetch('/api/orders').then(r => r.json()))
 		 *   .retryWhen(e => e.status === 503, { attempts: 3 });
 		 */
-		fromAsync: (fn) => makePipe(assertFn(fn, 'fromAsync')()),
+		fromAsync: (fn) => {
+			const source = assertFn(fn, 'fromAsync');
+			return makePipe(source(), source);
+		},
 
 		/**
 		 * Lift a plain function into a Pipe-returning form.
