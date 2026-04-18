@@ -1,19 +1,28 @@
 {
 	"name": "promised-pipes",
-	"version": "0.2.0",
+	"version": "0.2.01",
 	"description": "Elegant async pipelines that flow, transform, and recover without the noise.",
 	"license": "MIT",
 	"author": "Prakhar-Srivastava",
 	"type": "module",
-	"main": "./pipe.mjs",
-	"module": "./pipe.mjs",
+	"main": "./dist/pipe.min.mjs",
+	"module": "./dist/pipe.min.mjs",
 	"types": "./pipe.d.ts",
+	"jsdelivr": "./dist/pipe.global.js",
+	"unpkg": "./dist/pipe.global.js",
 	"exports": {
 		".": {
-			"import": "./pipe.mjs",
+			"import": "./dist/pipe.min.mjs",
+			"browser": "./dist/pipe.global.js",
 			"types": "./pipe.d.ts"
 		}
 	},
+	"files": [
+		"dist/",
+		"pipe.d.ts",
+		"README.md",
+		"LICENSE"
+	],
 	"engines": {
 		"node": ">=18.0.0"
 	},
@@ -21,14 +30,15 @@
 		"test": "node --test tests/pipe.test.mjs",
 		"test:watch": "node --test --watch tests/pipe.test.mjs",
 		"bench": "node bench/index.mjs",
+		"build": "esbuild pipe.mjs --bundle --minify --keep-names --sourcemap --format=esm --target=es2020 --platform=node --outfile=dist/pipe.min.mjs",
+		"build:iife": "esbuild targets/pipe.global.js --bundle --minify --keep-names --sourcemap --format=iife --target=es2018 --platform=browser --outfile=dist/pipe.global.js",
+		"build:wasm": "esbuild pipe.mjs --bundle --minify --keep-names --sourcemap --format=esm --target=es2022 --platform=neutral --outfile=dist/pipe.wasm.mjs",
+		"build:all": "rm -rf dist && npm run build && npm run build:iife && npm run build:wasm",
+		"prepublishOnly": "npm run build:all && npm test",
 		"docs:build": "typedoc --options typedoc.json",
 		"docs:watch": "typedoc --options typedoc.json --watch",
 		"check:types": "tsc --project tsconfig.check.json",
-		"samples": "node samples/01-basics.mjs && node samples/02-error-channel.mjs && node samples/03-retry-factory.mjs && node samples/04-configure-limits.mjs && node samples/05-abort-signal.mjs && node samples/06-concurrency-pool.mjs && node samples/07-coalesce-by-key.mjs",
-		"build": "mkdir -p dist && esbuild pipe.mjs --bundle --minify --sourcemap --format=esm --target=es2020 --platform=browser --outfile=dist/pipe.min.mjs",
-		"build:iife": "mkdir -p dist && esbuild pipe.mjs --bundle --minify --sourcemap --format=iife --target=es2018 --platform=browser --global-name=Pipe --outfile=dist/pipe.global.js",
-		"build:wasm": "mkdir -p dist && esbuild targets/pipe.wasm.js --bundle --minify --format=esm --outfile=dist/pipe.wasm.mjs --target=es2020 --platform=neutral",
-		"build:all": "rm -rf dist && npm run build && npm run build:iife && npm run build:wasm"
+		"samples": "node samples/01-basics.mjs && node samples/02-error-channel.mjs && node samples/03-retry-factory.mjs && node samples/04-configure-limits.mjs && node samples/05-abort-signal.mjs && node samples/06-concurrency-pool.mjs && node samples/07-coalesce-by-key.mjs"
 	},
 	"keywords": [
 		"promise",
