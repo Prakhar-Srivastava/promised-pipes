@@ -6,17 +6,6 @@
 
 <p>Chain promises like <code>ls | grep | sort | head</code> — data flows through, each stage transforms it,<br/>errors are handled inline, the whole thing is composable and <code>await</code>-able.</p>
 
-```js
-const orders = await Pipe.fromAsync(fetchOrders)
-  .retryWhen(e => e.status === 503, { attempts: 3, delay: 150 })
-  .timeout(5_000)
-  .tap(d => metrics.count(d.length))
-  .tapError(e => logger.error('pipeline', e))
-  .orFail(e => new AppError('orders.fetch', e))
-  .orRecover(async () => cache.get('orders:latest'))
-  .orElse(() => []);
-```
-
 <br/>
 
 [![npm](https://img.shields.io/npm/v/promised-pipes?color=6ee7b7&labelColor=0b0c0f&label=npm)](https://www.npmjs.com/package/promised-pipes)
@@ -28,6 +17,18 @@ const orders = await Pipe.fromAsync(fetchOrders)
 **[npm](https://www.npmjs.com/package/promised-pipes)** · **[Yarn](https://classic.yarnpkg.com/en/package/promised-pipes)** · **[jsDelivr](https://www.jsdelivr.com/package/npm/promised-pipes)** · **[Bundlephobia](https://bundlephobia.com/package/promised-pipes@0.2.1)** · **[GitHub](https://github.com/Prakhar-Srivastava/promised-pipes)**
 
 </div>
+
+
+```js
+const orders = await Pipe.fromAsync(fetchOrders)
+  .retryWhen(e => e.status === 503, { attempts: 3, delay: 150 })
+  .timeout(5_000)
+  .tap(d => metrics.count(d.length))
+  .tapError(e => logger.error('pipeline', e))
+  .orFail(e => new AppError('orders.fetch', e))
+  .orRecover(async () => cache.get('orders:latest'))
+  .orElse(() => []);
+```
 
 ---
 
