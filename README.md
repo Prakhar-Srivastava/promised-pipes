@@ -6,7 +6,7 @@
   <p>
     <code>fetch | retry | timeout | recover</code>
     <br/>
-    Stop writing nested try/catch. Start writing pipelines.
+    Reliability primitives, composed as readable pipelines.
   </p>
   <br/>
 
@@ -27,9 +27,39 @@
 
 ---
 
-## The problem
+## In 30 seconds
 
-You've written something like this. Probably more than once.
+`promised-pipes` gives you:
+
+- **Promise-native pipelines** you can `await` directly.
+- **Clear success/error channels** without branching noise.
+- **Built-in execution control**: retry, timeout, abort, pool, and coalescing.
+- **Tiny production footprint**: 3.2KB minzipped, zero dependencies.
+
+Install:
+
+```sh
+npm install promised-pipes
+```
+
+Use:
+
+```js
+import Pipe from 'promised-pipes';
+
+const orders = await Pipe.fromAsync(fetchOrders)
+  .retryWhen(e => e.status === 503, { attempts: 3, delay: 150 })
+  .timeout(5_000)
+  .orElse(() => []);
+```
+
+Then keep reading for API, execution policies, benchmarks, and runtime-specific examples.
+
+---
+
+## The problem it solves
+
+You have written this shape of code before. Every backend and edge service eventually does.
 
 ```js
 let data;
@@ -59,7 +89,7 @@ try {
 }
 ```
 
-25 lines. No timeout. The logger can crash and silently replace your real error with its own. The retry doesn't actually backoff correctly. The cache fallback eats its own errors. You'll find the bug in production at 2am.
+25 lines. No timeout. Logger failure can overwrite the original error. Retry semantics are easy to get subtly wrong. Fallbacks can swallow failures. This is exactly how pager fatigue starts.
 
 This is the same thing:
 
@@ -74,18 +104,18 @@ const data = await Pipe.fromAsync(fetchOrders)
   .orElse(() => []);
 ```
 
-Every concern has a name. Every failure mode is handled. The logger is isolated. The timeout exists. It's readable at 9am and at 2am.
+Each concern is explicit. Each failure mode is isolated. The timeout is real. The code is readable under pressure.
 
 ---
 
-## Why it works like Unix pipes
+## Why the model works
 
 In Unix, `ls | grep foo | sort | head -10` works because:
 - data flows left to right through each stage
 - each stage does exactly one thing
 - if any stage fails, the pipeline stops
 
-promised-pipes is the same idea for async JavaScript:
+`promised-pipes` brings that model to async JavaScript:
 
 ```
                     ┌─ success channel ───────────────────────────────────────┐
@@ -94,13 +124,13 @@ Pipe.fromAsync(fn)  │  .map()  .chain()  .mapTo()  .tap()                    �
                        .tapError()  .orFail()  .orRecover()  .orElse()
 ```
 
-Methods on the wrong channel **are silently skipped** — `.map` never runs on a rejected pipe, `.tapError` never runs on a resolved one. No guard clauses. No early returns. No `if (err) return`.
+Methods on the wrong channel **are skipped by design**. `.map` never runs on a rejected pipe, `.tapError` never runs on a resolved one. No guard clauses. No `if (err) return`. No channel confusion.
 
-Every Pipe is a **native Promise** under the hood — fully `await`-able, works with `Promise.all`, `Promise.race`, `.then`, `.catch`, `.finally`. No adapters, no `.toPromise()`, no lock-in.
+Every Pipe is still a **native Promise** under the hood: `await` it, pass it to `Promise.all`, chain `.then/.catch/.finally`. No wrappers to unwrap. No lock-in.
 
 ---
 
-## Install
+## Install and load
 
 ```sh
 npm install promised-pipes
@@ -115,9 +145,9 @@ import Pipe from 'https://cdn.jsdelivr.net/npm/promised-pipes@0.2.1/+esm'
 // <script src="https://cdn.jsdelivr.net/npm/promised-pipes@0.2.1/dist/pipe.global.min.js"></script>
 ```
 
-**3.2KB minzipped. Zero dependencies.**
+**3.2KB minzipped. Zero dependencies. Native Promise interoperability.**
 
-Compare that to assembling it yourself:
+If you assemble this capability piecemeal, size and complexity climb quickly:
 
 | | size | does |
 |---|---|---|
@@ -128,7 +158,18 @@ Compare that to assembling it yourself:
 
 ---
 
+## Why teams choose promised-pipes
+
+- **Readable control flow**: one linear pipeline instead of nested `try/catch` and ad-hoc guards.
+- **Safer failure semantics**: clear success/error channels and isolated side-effects.
+- **Built-in resilience**: retry, timeout, abort, coalescing, and pooling in one mental model.
+- **Production-friendly footprint**: tiny bundle, zero dependencies, native Promise interoperability.
+
+---
+
 ## Core API
+
+The API is intentionally small: values in, transforms, error channel, resilience primitives, and controlled concurrency.
 
 ### Getting values in
 
@@ -165,7 +206,7 @@ await Pipe.of(10)
 
 // Observe — side-effect, stay rejected
 // IMPORTANT: if your logger throws here, the original error still propagates.
-// A crashing logger cannot silently replace an upstream failure.
+// Side-effects never get to rewrite upstream truth.
 .tapError(e => logger.error('something broke', e))
 ```
 
@@ -214,7 +255,7 @@ const [primary, backup] = await Pipe.fromAsync(fetchPrimary)
 
 ## v0.2 — Execution policies
 
-Three opt-in execution behaviours, all backward compatible.
+Three opt-in execution policies, fully backward compatible.
 
 ```js
 import { configure } from 'promised-pipes';
@@ -275,7 +316,7 @@ const [a, b, c] = await Promise.all([
 
 ## Cloudflare Workers
 
-promised-pipes runs on Workers without modification. Zero Node builtins, ES2022 neutral build, well under the isolate size limit.
+`promised-pipes` runs on Workers without adaptation: zero Node builtins, neutral ESM target, and footprint-friendly for isolates.
 
 ```js
 import Pipe from 'promised-pipes'
@@ -318,7 +359,7 @@ export default {
 
 ## TypeScript
 
-Ships with full declarations. No `@types/` needed.
+Full declarations ship in-package. No `@types` install, no degraded inference.
 
 ```ts
 import Pipe, {
@@ -345,15 +386,15 @@ const r: PipeType<number> = double(5)
 
 ## A few things that might surprise you
 
-**Your logger cannot eat your real error.** `.tapError(fn)` isolates the side-effect — if `fn` throws, that exception is discarded and the original error re-rejects. This is deliberate. Logging failures should never change what your error handlers see.
+**Your logger cannot eat your real error.** `.tapError(fn)` isolates side-effects. If `fn` throws, that exception is discarded and the original error keeps propagating. This is deliberate: observability should not mutate control flow.
 
-**It's already a Promise.** No `.toPromise()`. No unwrapping. `await pipe`, `Promise.all([pipe, pipe])`, `.then(handler)` — all work exactly as you'd expect, because every Pipe is a Proxy over the underlying Promise.
+**It is already a Promise.** No `.toPromise()`. No adapters. `await pipe`, `Promise.all([pipe])`, and `.then(handler)` work exactly as expected.
 
-**`pipe.p` is `undefined`.** The internal Promise is stored under an unexported Symbol — not a string key. `Object.keys(pipe)` is empty. Nothing leaks.
+**`pipe.p` is `undefined`.** The internal Promise lives behind an unexported Symbol, not a string key. `Object.keys(pipe)` is empty. No accidental leakage.
 
-**Bad arguments throw synchronously.** Pass a non-function to `.map()` and you get a stack trace pointing at your call site, not buried inside a `.then()` handler three levels deep.
+**Bad arguments fail fast.** Pass a non-function to `.map()` and the throw points at your callsite immediately, not later inside a nested async chain.
 
-**`.retryWhen` needs the factory to be upstream.** `Pipe.fromAsync(factory).retryWhen(...)` re-runs the factory on each attempt. `.map(fn).retryWhen(...)` re-presents the already-settled value. This is documented behaviour, not a bug.
+**`.retryWhen` needs a factory upstream.** `Pipe.fromAsync(factory).retryWhen(...)` re-runs work each attempt. `.map(fn).retryWhen(...)` only replays an already settled value. This is intentional.
 
 ---
 
@@ -371,6 +412,54 @@ const r: PipeType<number> = double(5)
 
 ---
 
+## Benchmarks
+
+Benchmarks are product-quality, not vanity metrics: one track protects regressions, one track demonstrates behavior on realistic scenarios.
+
+- **CI track (`ci-v1`)** keeps regression checks deterministic and gateable.
+- **Showcase track (`showcase-v1`)** compares equivalent Promise vs Pipe scenarios.
+
+### Run benchmark commands
+
+```sh
+# CI benchmark run (deterministic)
+npm run bench:ci
+
+# Local compare (informational, non-gating)
+npm run bench:compare
+
+# CI compare (strict, gating)
+npm run bench:compare:ci
+
+# Headline Promise vs Pipe scenarios
+npm run bench:showcase
+
+# Run both tracks
+npm run bench
+```
+
+### Output files
+
+- `bench/out/ci-current.json` - CI track raw report
+- `bench/out/showcase-current.json` - showcase track raw report
+- `bench/out/ci-compare-summary.md` - human-readable compare summary
+- `bench/out/ci-compare-diff.json` - machine-readable compare diff
+
+### Baseline and thresholds
+
+- Default regression threshold: **20% slower** by `medianMsPerOp`.
+- Threshold config lives in `bench/baselines/ci-thresholds.json`.
+- Local fallback baseline: `bench/baselines/ci-baseline.json`.
+- CI baseline source: latest successful `main` benchmark artifact (`ci-baseline-report`).
+
+### Current benchmark coverage
+
+The deterministic CI suite currently covers 18 benchmark IDs and fails on metadata mismatch, missing IDs, unexpected new IDs (unless allowed), or threshold regressions.
+
+Benchmark methodology and interpretation guidance live in [docs/benchmarking.md](./docs/benchmarking.md).
+
+---
+
 ## Contributing
 
 ```sh
@@ -384,7 +473,6 @@ npm run samples   # runnable use-case scripts
 ```
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide.
-Benchmark methodology lives in [docs/benchmarking.md](./docs/benchmarking.md).
 
 ## Competition
 
@@ -414,7 +502,7 @@ Benchmark methodology lives in [docs/benchmarking.md](./docs/benchmarking.md).
 ---
 
 <div align="center">
-  <p>If promised-pipes saved you from writing another retry loop at 2am,<br/>consider leaving a ⭐ — it helps more people find it.</p>
+  <p>If promised-pipes helped you ship safer async code,<br/>consider leaving a ⭐ so more teams can find it.</p>
   <br/>
   <a href="https://github.com/Prakhar-Srivastava/promised-pipes">github.com/Prakhar-Srivastava/promised-pipes</a>
   <br/><br/>
