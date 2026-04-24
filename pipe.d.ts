@@ -1,5 +1,5 @@
 /**
- * @fileoverview pipe.d.ts — v0.2.0
+ * @fileoverview pipe.d.ts — v0.2.2
  *
  * Type declarations for pipe.mjs.
  *
@@ -24,7 +24,7 @@ export declare const DEFAULT_MAX_ATTEMPTS: 20;
 export declare const DEFAULT_MAX_DELAY: 30_000;
 
 /** Current library version. */
-export declare const VERSION: '0.2.0';
+export declare const VERSION: '0.2.2';
 
 // ── Sentinel error types ───────────────────────────────────────────────────────
 

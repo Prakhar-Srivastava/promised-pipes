@@ -12,7 +12,7 @@
 
 [![npm](https://img.shields.io/npm/v/promised-pipes?color=6ee7b7&labelColor=0b0c0f&label=npm)](https://www.npmjs.com/package/promised-pipes)
 [![downloads](https://img.shields.io/npm/dw/promised-pipes?color=38bdf8&labelColor=0b0c0f&label=downloads%2Fweek)](https://www.npmjs.com/package/promised-pipes)
-[![size](https://img.shields.io/bundlephobia/minzip/promised-pipes?color=f472b6&labelColor=0b0c0f&label=3.2kb)](https://bundlephobia.com/package/promised-pipes@0.2.1)
+[![size](https://img.shields.io/bundlephobia/minzip/promised-pipes?color=f472b6&labelColor=0b0c0f&label=3.2kb)](https://bundlephobia.com/package/promised-pipes@0.2.2)
 [![jsdelivr](https://img.shields.io/jsdelivr/npm/hw/promised-pipes?color=a78bfa&labelColor=0b0c0f&label=jsdelivr)](https://www.jsdelivr.com/package/npm/promised-pipes)
 [![license](https://img.shields.io/npm/l/promised-pipes?color=fbbf24&labelColor=0b0c0f)](./LICENSE)
 
@@ -20,7 +20,7 @@
     <a href="https://www.npmjs.com/package/promised-pipes">npm</a> ·
     <a href="https://classic.yarnpkg.com/en/package/promised-pipes">Yarn</a> ·
     <a href="https://www.jsdelivr.com/package/npm/promised-pipes">jsDelivr</a> ·
-    <a href="https://bundlephobia.com/package/promised-pipes@0.2.1">Bundlephobia</a> ·
+    <a href="https://bundlephobia.com/package/promised-pipes@0.2.2">Bundlephobia</a> ·
     <a href="https://github.com/Prakhar-Srivastava/promised-pipes">GitHub</a>
   </p>
 </div>
@@ -139,10 +139,10 @@ yarn add promised-pipes
 
 ```js
 // ESM — CDN, no install
-import Pipe from 'https://cdn.jsdelivr.net/npm/promised-pipes@0.2.1/+esm'
+import Pipe from 'https://cdn.jsdelivr.net/npm/promised-pipes@0.2.2/+esm'
 
 // Vanilla JS — CDN script tag (exposes global Pipe object)
-// <script src="https://cdn.jsdelivr.net/npm/promised-pipes@0.2.1/dist/pipe.global.min.js"></script>
+// <script src="https://cdn.jsdelivr.net/npm/promised-pipes@0.2.2/dist/pipe.global.min.js"></script>
 ```
 
 **3.2KB minzipped. Zero dependencies. Native Promise interoperability.**
@@ -402,7 +402,7 @@ const r: PipeType<number> = double(5)
 
 | | |
 |---|---|
-| **Size** | [3.2KB minified + gzip](https://bundlephobia.com/package/promised-pipes@0.2.1) |
+| **Size** | [3.2KB minified + gzip](https://bundlephobia.com/package/promised-pipes@0.2.2) |
 | **Dependencies** | Zero |
 | **Node** | ≥ 18 |
 | **Runtimes** | Node · Browser · Cloudflare Workers · Deno · Bun |

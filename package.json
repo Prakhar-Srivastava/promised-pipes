@@ -1,6 +1,6 @@
 {
 	"name": "promised-pipes",
-	"version": "0.2.01",
+	"version": "0.2.2",
 	"description": "Elegant async pipelines that flow, transform, and recover without the noise.",
 	"license": "MIT",
 	"author": "Prakhar-Srivastava",

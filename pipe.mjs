@@ -1,5 +1,5 @@
 /**
- * @fileoverview pipe.mjs — v0.2.0
+ * @fileoverview pipe.mjs — v0.2.2
  *
  * Elegant async pipelines that flow, transform, and recover without the noise.
  *
@@ -9,7 +9,7 @@
  * before entering the Promise chain — clean stack traces, not buried TypeErrors.
  *
  * @module pipe
- * @version 0.2.0
+ * @version 0.2.2
  *
  * @example <caption>Zero-config import</caption>
  * import Pipe from './pipe.mjs';
@@ -44,7 +44,7 @@ export const DEFAULT_MAX_ATTEMPTS = 20;
 export const DEFAULT_MAX_DELAY = 30_000;
 
 /** @type {string} Current library version. */
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.2';
 
 // ── Internal Symbol ────────────────────────────────────────────────────────────
 // $$p_ is the key under which each Pipe instance stores its underlying Promise.

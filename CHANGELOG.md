@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- Published maintenance release with synchronized package/runtime type versions.
+- Updated README CDN and Bundlephobia links to point at `0.2.2`.
+
 ## 0.2.0
 
 - Added opt-in configured execution variants through `configure(...)`:
