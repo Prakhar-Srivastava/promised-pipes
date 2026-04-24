@@ -333,18 +333,20 @@ const __define_proto$ = (cfg = {}) => {
 				 * That means `'toString' in Proto.prototype` is `true`, so `.toString`
 				 * would be served as a Pipe method instead of being forwarded to the
 				 * Promise — silently breaking `Object.prototype.toString.call(pipe)`.
+				 *
+				 * Hot-path order: Pipe methods (including `.then`/`.catch`/`.finally`
+				 * defined on prototype) resolve without a bind-cache hit; the Symbol
+				 * short-circuits before any string-key dispatch; the bind cache is
+				 * populated in a single WeakMap.set without a re-read.
 				 */
 				get(target, prop, receiver) {
-					return Object.hasOwn(Proto.prototype, prop)
-						? Reflect.get(target, prop, receiver)
-						: prop === $$p_
-							? p
-							: typeof p[prop] !== 'function'
-								? p[prop]
-								: (Proto.#__bind_cache_.get(p)
-									?? (Proto.#__bind_cache_.set(p, Object.create(null)),
-										Proto.#__bind_cache_.get(p)))
-								[prop] ??= p[prop].bind(p);
+					if (Object.hasOwn(Proto.prototype, prop)) return Reflect.get(target, prop, receiver);
+					if (prop === $$p_) return p;
+					const v = p[prop];
+					if (typeof v !== 'function') return v;
+					let cache = Proto.#__bind_cache_.get(p);
+					if (cache === undefined) Proto.#__bind_cache_.set(p, cache = Object.create(null));
+					return cache[prop] ??= v.bind(p);
 				},
 			});
 		}
@@ -361,6 +363,25 @@ const __define_proto$ = (cfg = {}) => {
 		 * @returns {Proxy} A Pipe instance.
 		 */
 		static makePipe(promise, retrySource) { return Proto.#__make_pipe$(promise, retrySource); }
+
+		/**
+		 * Derive a child Pipe from the promise `next` that carries forward
+		 * `parent`'s retry-source, if any. Used by value-preserving operators
+		 * (`.tap`, `.tapError`) so that `.retryWhen` downstream still re-runs the
+		 * original upstream factory — not the settled, observed value.
+		 *
+		 * Value-transforming operators (`.map`, `.chain`, `.mapTo`, `.orElse`,
+		 * `.orFail`, `.orRecover`, `.sort`, `.merge`, `.timeout`) intentionally do
+		 * NOT carry the retry-source — retrying them would double-apply the
+		 * transform, which is rarely what the caller wants.
+		 *
+		 * @param {Promise} parent - Upstream promise whose lineage to inherit.
+		 * @param {Promise} next   - Derived promise to wrap.
+		 * @returns {Proxy} A Pipe wrapping `next`, with retry-source carried from `parent`.
+		 */
+		static #__derive$(parent, next) {
+			return Proto.#__make_pipe$(next, Proto.#__retry_source_.get(parent));
+		}
 
 		// ── Core monad ────────────────────────────────────────────────────────
 		// These four methods form the functor/monad core.
@@ -432,12 +453,22 @@ const __define_proto$ = (cfg = {}) => {
 		 */
 		tap(fn) {
 			assertFn(fn, 'tap');
-			const next = this[$$p_].then(v => (fn(v), v));
-			const retrySource = Proto.#__retry_source_.get(this[$$p_]);
-			return retrySource
-				? Proto.#__make_pipe$(next, retrySource)
-				: Proto.#__make_pipe$(next);
+			const p = this[$$p_];
+			return Proto.#__derive$(p, p.then(v => (fn(v), v)));
 		}
+
+		// ── Thenable interface ────────────────────────────────────────────────
+		// Defining `.then`, `.catch`, `.finally` directly on the prototype fast-paths
+		// the most common Promise interop (`await pipe`, `Promise.all([pipe])`) via
+		// the Proxy's `hasOwn` branch — skipping the bind cache and `.bind()`
+		// allocation the Proxy would otherwise perform for each call.
+
+		/** @param {Function} [onF] @param {Function} [onR] */
+		then(onF, onR) { return this[$$p_].then(onF, onR); }
+		/** @param {Function} onR */
+		catch(onR) { return this[$$p_].catch(onR); }
+		/** @param {Function} onF */
+		finally(onF) { return this[$$p_].finally(onF); }
 
 		// ── Error channel ──────────────────────────────────────────────────────
 		// Three distinct error-channel operations covering the three meaningful
@@ -476,7 +507,7 @@ const __define_proto$ = (cfg = {}) => {
 		 */
 		orFail(fn) {
 			assertFn(fn, 'orFail');
-			return Proto.#__make_pipe$(this[$$p_].catch(e => Promise.reject(fn(e))));
+			return Proto.#__make_pipe$(this[$$p_].catch(e => { throw fn(e); }));
 		}
 
 		/**
@@ -516,14 +547,11 @@ const __define_proto$ = (cfg = {}) => {
 		 */
 		tapError(fn) {
 			assertFn(fn, 'tapError');
-			const next = this[$$p_].catch(e => {
+			const p = this[$$p_];
+			return Proto.#__derive$(p, p.catch(e => {
 				try { fn(e); } catch (_) { /* fn threw — discard, preserve original */ }
-				return Promise.reject(e);
-			});
-			const retrySource = Proto.#__retry_source_.get(this[$$p_]);
-			return retrySource
-				? Proto.#__make_pipe$(next, retrySource)
-				: Proto.#__make_pipe$(next);
+				throw e;
+			}));
 		}
 
 		// ── Resilience ────────────────────────────────────────────────────────
@@ -557,14 +585,21 @@ const __define_proto$ = (cfg = {}) => {
 		timeout(ms, fallback) {
 			assertMs(ms, 'timeout', maxTimeout);
 			fallback !== undefined && assertFn(fallback, 'timeout fallback');
-			const timer = new Promise((_, rej) =>
-				setTimeout(() => rej(new TimeoutError(ms)), ms));
-			const race = Promise.race([this[$$p_], timer]);
+			const source = this[$$p_];
+			// Single new Promise + clearTimeout on source settle. Avoids a
+			// Promise.race allocation and, more importantly, stops the deadline
+			// timer from keeping Node's event loop alive when the source wins.
+			const raced = new Promise((resolve, reject) => {
+				const timerId = setTimeout(() => reject(new TimeoutError(ms)), ms);
+				source.then(
+					v => { clearTimeout(timerId); resolve(v); },
+					e => { clearTimeout(timerId); reject(e); },
+				);
+			});
 			return Proto.#__make_pipe$(
 				fallback
-					? race.catch(e =>
-						e instanceof TimeoutError ? fallback(e) : Promise.reject(e))
-					: race
+					? raced.catch(e => e instanceof TimeoutError ? fallback(e) : Promise.reject(e))
+					: raced
 			);
 		}
 
@@ -602,39 +637,36 @@ const __define_proto$ = (cfg = {}) => {
 		 */
 		retryWhen(predicate, opts = {}) {
 			assertFn(predicate, 'retryWhen predicate');
-			const attempts = Math.min(maxAttempts, Math.max(1,
+			const maxRetries = Math.min(maxAttempts, Math.max(1,
 				Number.isInteger(opts.attempts) ? opts.attempts : 3));
-			const delay = Math.min(maxDelay, Math.max(0,
+			const initialDelay = Math.min(maxDelay, Math.max(0,
 				Number.isFinite(opts.delay) ? opts.delay : 200));
 			const jitter = opts.jitter !== false;
-			const retrySource = Proto.#__retry_source_.get(this[$$p_]);
+			const source = this[$$p_];
+			const retrySource = Proto.#__retry_source_.get(source);
+			// Hot-path: single Promise chain, one Pipe allocation, no setTimeout
+			// when waitMs is 0, no per-retry IIFEs, no Pipe-per-recursion overhead.
+			const replay = typeof retrySource === 'function'
+				? () => { try { return Promise.resolve(retrySource()); }
+					catch (err) { return Promise.reject(err); } }
+				: () => source;
 
-			const __make_retry_promise$ = () => {
-				if (typeof retrySource !== 'function') return this[$$p_];
-				try { return Promise.resolve(retrySource()); }
-				catch (err) { return Promise.reject(err); }
+			let attempt = 0;
+			let currentDelay = initialDelay;
+
+			const onError = e => {
+				attempt++;
+				if (attempt > maxRetries || !predicate(e, attempt)) throw e;
+				const waitMs = currentDelay;
+				const doubled = currentDelay * 2;
+				currentDelay = doubled > maxDelay ? maxDelay : doubled;
+				if (waitMs <= 0) return replay().catch(onError);
+				const actual = jitter ? waitMs * (0.75 + Math.random() * 0.5) : waitMs;
+				return new Promise(res => setTimeout(res, actual))
+					.then(() => replay().catch(onError));
 			};
 
-			const run = (remaining, lastDelay, currentPromise) =>
-				Proto.#__make_pipe$(currentPromise.catch(e =>
-					((() => {
-						const attemptNumber = attempts - remaining + 1;
-						const shouldRetry = !(remaining <= 0) && !!predicate(e, attemptNumber);
-						return shouldRetry;
-					})())
-						? new Promise(res => setTimeout(res,
-							jitter
-								? lastDelay * (0.75 + Math.random() * 0.5)
-								: lastDelay))
-							.then(() => run(
-								remaining - 1,
-								Math.min(lastDelay * 2, maxDelay),
-								__make_retry_promise$(),
-							)[$$p_])
-						: Promise.reject(e)
-				));
-
-			return run(attempts, delay, this[$$p_]);
+			return Proto.#__make_pipe$(source.catch(onError));
 		}
 
 		// ── Collection ────────────────────────────────────────────────────────
@@ -664,9 +696,11 @@ const __define_proto$ = (cfg = {}) => {
 		 */
 		merge(others) {
 			assertArray(others, 'merge');
-			const all = [this[$$p_], ...others.map(o => Promise.resolve(o))];
+			// Promise.allSettled lifts each item via Promise.resolve internally,
+			// so passing `others` directly — without a .map(Promise.resolve) wrap —
+			// preserves semantics and avoids an intermediate array.
 			return Proto.#__make_pipe$(
-				Promise.allSettled(all).then(results =>
+				Promise.allSettled([this[$$p_], ...others]).then(results =>
 					results.map(r => r.status === 'fulfilled' ? r.value : r.reason)
 				)
 			);
@@ -696,7 +730,9 @@ const __define_proto$ = (cfg = {}) => {
 			comparator !== undefined && assertFn(comparator, 'sort comparator');
 			return Proto.#__make_pipe$(this[$$p_].then(arr => {
 				assertArray(arr, 'sort: pipe value');
-				return comparator ? [...arr].sort(comparator) : [...arr].sort();
+				// .slice() is faster than spread for arrays (no iterator protocol).
+				// Array.prototype.sort explicitly accepts undefined as comparator.
+				return arr.slice().sort(comparator);
 			}));
 		}
 	}
@@ -953,7 +989,9 @@ export const configure = (opts = {}) => {
 			__throw$('fromAsync: key requires configure({ coalesce: { enabled: true } })');
 		}
 		const runOnce = () => {
-			const task = () => Promise.resolve(source(signal));
+			// withAbort/runPooled both invoke task via Promise.resolve().then(task),
+			// which already converts sync throws and non-Promise returns correctly.
+			const task = () => source(signal);
 			const execute = () => (poolEnabled ? runPooled(task, signal) : withAbort(signal, task));
 			if (coalesceEnabled && optsObj.key !== undefined) {
 				return runWithCoalescing(optsObj.key, execute);
@@ -983,7 +1021,9 @@ export const configure = (opts = {}) => {
 		 * @param {A} v
 		 * @returns {Proto}
 		 */
-		of: (v) => makePipe(Promise.resolve(v)),
+		// makePipe() lifts non-Promises via Promise.resolve internally — no need
+		// to wrap twice on the way in.
+		of: (v) => makePipe(v),
 
 		/**
 		 * Create a pre-rejected Pipe. Useful for constructing failure cases
@@ -1055,7 +1095,7 @@ export const configure = (opts = {}) => {
 		 */
 		lift: (fn) => {
 			assertFn(fn, 'lift');
-			return (...args) => makePipe(Promise.resolve(fn(...args)));
+			return (...args) => makePipe(fn(...args));
 		},
 
 		/**
@@ -1147,7 +1187,10 @@ export const configure = (opts = {}) => {
 		traverse: (arr, fn) => {
 			assertArray(arr, 'Pipe.traverse');
 			assertFn(fn, 'Pipe.traverse fn');
-			return makePipe(Promise.all(arr.map((item, i) => Promise.resolve(fn(item, i)))));
+			// Promise.all lifts each element via Promise.resolve internally; the
+			// explicit wrap was redundant. Preserve the 2-arg (item, index) call
+			// contract so arr.map's 3rd arg isn't exposed to user code.
+			return makePipe(Promise.all(arr.map((item, i) => fn(item, i))));
 		},
 	});
 };

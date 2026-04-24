@@ -142,7 +142,7 @@ yarn add promised-pipes
 import Pipe from 'https://cdn.jsdelivr.net/npm/promised-pipes@0.2.2/+esm'
 
 // Vanilla JS — CDN script tag (exposes global Pipe object)
-// <script src="https://cdn.jsdelivr.net/npm/promised-pipes@0.2.2/dist/pipe.global.min.js"></script>
+// <script src="https://cdn.jsdelivr.net/npm/promised-pipes@0.2.2/dist/pipe.global.js"></script>
 ```
 
 **3.2KB minzipped. Zero dependencies. Native Promise interoperability.**
@@ -408,7 +408,7 @@ const r: PipeType<number> = double(5)
 | **Runtimes** | Node · Browser · Cloudflare Workers · Deno · Bun |
 | **TypeScript** | Declarations included, no install needed |
 | **Formats** | ESM · IIFE (CDN) · neutral/edge |
-| **Tests** | 161, all passing, zero external test dependencies |
+| **Tests** | 173, all passing, zero external test dependencies |
 
 ---
 
@@ -465,7 +465,7 @@ Benchmark methodology and interpretation guidance live in [docs/benchmarking.md]
 ```sh
 git clone https://github.com/Prakhar-Srivastava/promised-pipes
 npm install
-npm test          # 161 tests, node:test built-in, no Jest
+npm test          # 173 tests, node:test built-in, no Jest
 npm run bench:ci  # deterministic regression benchmark suite
 npm run bench:showcase   # Promise/manual comparison scenarios
 npm run bench:compare    # local informational compare vs fallback baseline
