@@ -377,11 +377,14 @@ const r: PipeType<number> = double(5)
 git clone https://github.com/Prakhar-Srivastava/promised-pipes
 npm install
 npm test          # 161 tests, node:test built-in, no Jest
-npm run bench     # performance benchmarks
+npm run bench:ci  # deterministic regression benchmark suite
+npm run bench:showcase   # Promise/manual comparison scenarios
+npm run bench:compare    # local informational compare vs fallback baseline
 npm run samples   # runnable use-case scripts
 ```
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide.
+Benchmark methodology lives in [docs/benchmarking.md](./docs/benchmarking.md).
 
 ## Competition
 

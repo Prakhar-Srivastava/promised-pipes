@@ -1,0 +1,86 @@
+name: benchmarks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ci-bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run deterministic benchmark suite
+        run: npm run bench:ci
+
+      - name: Prepare main baseline artifact
+        if: github.event_name != 'pull_request'
+        run: cp bench/out/ci-current.json bench/out/ci-baseline.json
+
+      - name: Find latest successful main benchmark run
+        if: github.event_name == 'pull_request'
+        id: baseline-run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const workflowId = context.workflow;
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner,
+              repo,
+              workflow_id: workflowId,
+              branch: 'main',
+              status: 'completed',
+              per_page: 50,
+            });
+            const successful = runs.find(run => run.conclusion === 'success');
+            if (!successful) {
+              core.setFailed('No successful main benchmark run found for baseline artifact.');
+              return;
+            }
+            core.setOutput('run_id', String(successful.id));
+            core.info(`Using baseline from run ${successful.id}`);
+
+      - name: Download baseline artifact from main
+        if: github.event_name == 'pull_request'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.baseline-run.outputs.run_id }}
+          name: ci-baseline-report
+          path: bench/out/baseline
+
+      - name: Compare with main baseline artifact
+        if: github.event_name == 'pull_request'
+        run: npm run bench:compare:ci
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            bench/out/ci-current.json
+            bench/out/ci-compare-summary.md
+
+      - name: Upload main baseline artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-baseline-report
+          path: bench/out/ci-baseline.json

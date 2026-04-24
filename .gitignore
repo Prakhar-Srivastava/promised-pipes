@@ -85,6 +85,7 @@ dist
 
 # TypeDoc generated API reference (run npm run docs:build)
 docs/api
+bench/out
 
 # Gatsby files
 .cache/
@@ -153,6 +154,7 @@ vite.config.ts.timestamp-*
 .cursorrules/
 CLAUDE.md
 .DS_Store/
+.DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100

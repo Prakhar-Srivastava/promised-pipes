@@ -1,0 +1,41 @@
+{
+  "defaultThreshold": 0.2,
+  "overrides": {
+    "ci:core/race first result": {
+      "threshold": 0.75,
+      "reason": "Very short path with high scheduler noise in shared CI."
+    },
+    "ci:core/fromCallback bridge": {
+      "threshold": 0.5,
+      "reason": "Bridge test is allocation-sensitive and shows moderate variance."
+    },
+    "ci:core/timeout success path": {
+      "threshold": 0.75,
+      "reason": "Timer-sensitive fast path can vary significantly by host load."
+    },
+    "ci:core/timeout error path": {
+      "threshold": 0.25,
+      "reason": "Timer-heavy rejection path; still relatively stable."
+    },
+    "ci:core/error channel orElse": {
+      "threshold": 0.35,
+      "reason": "Error-path allocation/GC sensitivity introduces moderate run-to-run variance."
+    },
+    "ci:execution/pool queue pressure": {
+      "threshold": 0.65,
+      "reason": "Concurrency scheduling behavior varies under shared CPU."
+    },
+    "ci:execution/coalesce settled reuse ttl>0": {
+      "threshold": 0.35,
+      "reason": "Short-duration settled-cache lookup path shows notable host-level variance."
+    },
+    "ci:execution/coalesce ttl expiry immediate": {
+      "threshold": 3,
+      "reason": "Micro-duration entry with very high relative volatility."
+    },
+    "ci:execution/retryWhen deterministic delay=0": {
+      "threshold": 0.3,
+      "reason": "Macrotask scheduler-sensitive due to zero-delay retries."
+    }
+  }
+}

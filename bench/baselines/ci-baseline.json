@@ -1,0 +1,590 @@
+{
+  "meta": {
+    "track": "ci",
+    "node": "v24.14.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "warmups": 3,
+    "runs": 11,
+    "timestamp": "2026-04-24T15:08:05.722Z",
+    "profile": {
+      "id": "ci-v1",
+      "intent": "regression-gate"
+    },
+    "suiteHash": "a22fc23141d6e5972a70bb9fa8e5163f299976506fa47b7f5d6539e4b4950ca2"
+  },
+  "results": [
+    {
+      "id": "ci:core/chain depth",
+      "section": "ci:core",
+      "name": "chain depth",
+      "category": "cpuBound",
+      "tags": [
+        "core",
+        "chain"
+      ],
+      "samplesMs": [
+        1.6986,
+        1.4102,
+        1.5273,
+        2.138,
+        1.5523,
+        2.3463,
+        1.8016,
+        1.7207,
+        1.6381,
+        1.5321,
+        1.5437
+      ],
+      "stats": {
+        "operations": 12000,
+        "medianMs": 1.6381,
+        "minMs": 1.4102,
+        "maxMs": 2.3463,
+        "p95Ms": 2.3463,
+        "medianMsPerOp": 0.00013651,
+        "opsPerSec": 7325448.3022
+      }
+    },
+    {
+      "id": "ci:core/error channel orElse",
+      "section": "ci:core",
+      "name": "error channel orElse",
+      "category": "featureSemantics",
+      "tags": [
+        "error-channel"
+      ],
+      "samplesMs": [
+        20.0995,
+        10.9462,
+        11.6279,
+        13.9084,
+        14.5518,
+        12.3321,
+        12.8288,
+        18.094,
+        12.7183,
+        17.9143,
+        11.2887
+      ],
+      "stats": {
+        "operations": 6000,
+        "medianMs": 12.8288,
+        "minMs": 10.9462,
+        "maxMs": 20.0995,
+        "p95Ms": 20.0995,
+        "medianMsPerOp": 0.00213814,
+        "opsPerSec": 467696.4771
+      }
+    },
+    {
+      "id": "ci:core/error channel orFail",
+      "section": "ci:core",
+      "name": "error channel orFail",
+      "category": "featureSemantics",
+      "tags": [
+        "error-channel"
+      ],
+      "samplesMs": [
+        43.0994,
+        22.0172,
+        22.2326,
+        25.9149,
+        20.9797,
+        21.2733,
+        22.8682,
+        25.213,
+        21.3608,
+        23.5582,
+        23.1013
+      ],
+      "stats": {
+        "operations": 6000,
+        "medianMs": 22.8682,
+        "minMs": 20.9797,
+        "maxMs": 43.0994,
+        "p95Ms": 43.0994,
+        "medianMsPerOp": 0.00381136,
+        "opsPerSec": 262373.4671
+      }
+    },
+    {
+      "id": "ci:core/error channel tapError isolated",
+      "section": "ci:core",
+      "name": "error channel tapError isolated",
+      "category": "featureSemantics",
+      "tags": [
+        "error-channel",
+        "isolation"
+      ],
+      "samplesMs": [
+        31.1371,
+        24.9289,
+        24.0268,
+        24.176,
+        56.3219,
+        23.2095,
+        42.4342,
+        28.2841,
+        25.8666,
+        23.3116,
+        23.5513
+      ],
+      "stats": {
+        "operations": 6000,
+        "medianMs": 24.9289,
+        "minMs": 23.2095,
+        "maxMs": 56.3219,
+        "p95Ms": 56.3219,
+        "medianMsPerOp": 0.00415481,
+        "opsPerSec": 240684.7481
+      }
+    },
+    {
+      "id": "ci:core/fromCallback bridge",
+      "section": "ci:core",
+      "name": "fromCallback bridge",
+      "category": "featureSemantics",
+      "tags": [
+        "callback-bridge"
+      ],
+      "samplesMs": [
+        2.2925,
+        2.4945,
+        2.34,
+        2.3055,
+        7.6357,
+        1.9004,
+        1.7777,
+        1.978,
+        1.9007,
+        2.8713,
+        2.69
+      ],
+      "stats": {
+        "operations": 4000,
+        "medianMs": 2.3055,
+        "minMs": 1.7777,
+        "maxMs": 7.6357,
+        "p95Ms": 7.6357,
+        "medianMsPerOp": 0.00057636,
+        "opsPerSec": 1735013.1731
+      }
+    },
+    {
+      "id": "ci:core/map chain depth",
+      "section": "ci:core",
+      "name": "map chain depth",
+      "category": "cpuBound",
+      "tags": [
+        "core",
+        "map"
+      ],
+      "samplesMs": [
+        1.565,
+        2.2188,
+        1.9446,
+        1.6088,
+        1.7743,
+        1.8198,
+        1.519,
+        1.9838,
+        1.4885,
+        1.7519,
+        1.4535
+      ],
+      "stats": {
+        "operations": 12000,
+        "medianMs": 1.7519,
+        "minMs": 1.4535,
+        "maxMs": 2.2188,
+        "p95Ms": 2.2188,
+        "medianMsPerOp": 0.00014599,
+        "opsPerSec": 6849643.4761
+      }
+    },
+    {
+      "id": "ci:core/race first result",
+      "section": "ci:core",
+      "name": "race first result",
+      "category": "timerSensitive",
+      "tags": [
+        "race"
+      ],
+      "samplesMs": [
+        0.0035,
+        0.003,
+        0.0037,
+        0.0027,
+        0.0029,
+        0.0118,
+        0.0165,
+        0.0038,
+        0.0036,
+        0.0036,
+        0.0037
+      ],
+      "stats": {
+        "operations": 3,
+        "medianMs": 0.0036,
+        "minMs": 0.0027,
+        "maxMs": 0.0165,
+        "p95Ms": 0.0165,
+        "medianMsPerOp": 0.00120833,
+        "opsPerSec": 827586.2068
+      }
+    },
+    {
+      "id": "ci:core/timeout error path",
+      "section": "ci:core",
+      "name": "timeout error path",
+      "category": "timerSensitive",
+      "tags": [
+        "timeout",
+        "error-path"
+      ],
+      "samplesMs": [
+        213.2858,
+        205.779,
+        208.5286,
+        214.3881,
+        214.8495,
+        208.6708,
+        205.8153,
+        206.2271,
+        212.7606,
+        217.4294,
+        209.3093
+      ],
+      "stats": {
+        "operations": 180,
+        "medianMs": 209.3093,
+        "minMs": 205.779,
+        "maxMs": 217.4294,
+        "p95Ms": 217.4294,
+        "medianMsPerOp": 1.16282963,
+        "opsPerSec": 859.9712
+      }
+    },
+    {
+      "id": "ci:core/timeout success path",
+      "section": "ci:core",
+      "name": "timeout success path",
+      "category": "timerSensitive",
+      "tags": [
+        "timeout",
+        "success-path"
+      ],
+      "samplesMs": [
+        1.3273,
+        1.5451,
+        1.5647,
+        1.3123,
+        1.2923,
+        1.4641,
+        1.3894,
+        1.4146,
+        1.3895,
+        1.3433,
+        11.3433
+      ],
+      "stats": {
+        "operations": 2000,
+        "medianMs": 1.3895,
+        "minMs": 1.2923,
+        "maxMs": 11.3433,
+        "p95Ms": 11.3433,
+        "medianMsPerOp": 0.00069475,
+        "opsPerSec": 1439366.6787
+      }
+    },
+    {
+      "id": "ci:core/traverse array",
+      "section": "ci:core",
+      "name": "traverse array",
+      "category": "featureSemantics",
+      "tags": [
+        "traverse"
+      ],
+      "samplesMs": [
+        0.0415,
+        0.0427,
+        0.0417,
+        0.0435,
+        0.0362,
+        0.0862,
+        0.054,
+        0.0576,
+        0.0368,
+        0.0406,
+        0.0343
+      ],
+      "stats": {
+        "operations": 48,
+        "medianMs": 0.0417,
+        "minMs": 0.0343,
+        "maxMs": 0.0862,
+        "p95Ms": 0.0862,
+        "medianMsPerOp": 0.00086892,
+        "opsPerSec": 1150858.3485
+      }
+    },
+    {
+      "id": "ci:execution/coalesce in-flight dedupe ttl=0",
+      "section": "ci:execution",
+      "name": "coalesce in-flight dedupe ttl=0",
+      "category": "featureSemantics",
+      "tags": [
+        "coalesce",
+        "in-flight"
+      ],
+      "samplesMs": [
+        6.6738,
+        3.4976,
+        3.4354,
+        7.0995,
+        3.2315,
+        8.6908,
+        3.5238,
+        2.9365,
+        2.7354,
+        7.3375,
+        3.2322
+      ],
+      "stats": {
+        "operations": 5400,
+        "medianMs": 3.4976,
+        "minMs": 2.7354,
+        "maxMs": 8.6908,
+        "p95Ms": 8.6908,
+        "medianMsPerOp": 0.0006477,
+        "opsPerSec": 1543923.3322
+      }
+    },
+    {
+      "id": "ci:execution/coalesce settled reuse ttl>0",
+      "section": "ci:execution",
+      "name": "coalesce settled reuse ttl>0",
+      "category": "featureSemantics",
+      "tags": [
+        "coalesce",
+        "ttl"
+      ],
+      "samplesMs": [
+        0.3864,
+        0.4164,
+        0.3847,
+        0.3803,
+        0.3819,
+        0.3935,
+        0.3815,
+        0.3821,
+        0.381,
+        0.4063,
+        0.3588
+      ],
+      "stats": {
+        "operations": 1400,
+        "medianMs": 0.3821,
+        "minMs": 0.3588,
+        "maxMs": 0.4164,
+        "p95Ms": 0.4164,
+        "medianMsPerOp": 0.00027292,
+        "opsPerSec": 3664125.334
+      }
+    },
+    {
+      "id": "ci:execution/coalesce shareErrors=false",
+      "section": "ci:execution",
+      "name": "coalesce shareErrors=false",
+      "category": "featureSemantics",
+      "tags": [
+        "coalesce",
+        "shareErrors=false"
+      ],
+      "samplesMs": [
+        2.9954,
+        2.412,
+        2.7143,
+        2.519,
+        3.3844,
+        2.4232,
+        11.7048,
+        2.6698,
+        2.6846,
+        2.817,
+        3.1864
+      ],
+      "stats": {
+        "operations": 1400,
+        "medianMs": 2.7143,
+        "minMs": 2.412,
+        "maxMs": 11.7048,
+        "p95Ms": 11.7048,
+        "medianMsPerOp": 0.00193875,
+        "opsPerSec": 515796.2605
+      }
+    },
+    {
+      "id": "ci:execution/coalesce ttl expiry immediate",
+      "section": "ci:execution",
+      "name": "coalesce ttl expiry immediate",
+      "category": "timerSensitive",
+      "tags": [
+        "coalesce",
+        "ttl=0"
+      ],
+      "samplesMs": [
+        0.0028,
+        0.0063,
+        0.0037,
+        0.0028,
+        0.0039,
+        0.0034,
+        0.0038,
+        0.0036,
+        0.003,
+        0.0023,
+        0.0021
+      ],
+      "stats": {
+        "operations": 2,
+        "medianMs": 0.0034,
+        "minMs": 0.0021,
+        "maxMs": 0.0063,
+        "p95Ms": 0.0063,
+        "medianMsPerOp": 0.001708,
+        "opsPerSec": 585480.095
+      }
+    },
+    {
+      "id": "ci:execution/pool queue overflow behavior",
+      "section": "ci:execution",
+      "name": "pool queue overflow behavior",
+      "category": "featureSemantics",
+      "tags": [
+        "pool",
+        "overflow"
+      ],
+      "samplesMs": [
+        3.5413,
+        3.5182,
+        3.5012,
+        3.5134,
+        3.5166,
+        3.4956,
+        3.4994,
+        3.4967,
+        3.5227,
+        2.367,
+        3.4976
+      ],
+      "stats": {
+        "operations": 6,
+        "medianMs": 3.5012,
+        "minMs": 2.367,
+        "maxMs": 3.5413,
+        "p95Ms": 3.5413,
+        "medianMsPerOp": 0.58352783,
+        "opsPerSec": 1713.7143
+      }
+    },
+    {
+      "id": "ci:execution/pool queue pressure",
+      "section": "ci:execution",
+      "name": "pool queue pressure",
+      "category": "timerSensitive",
+      "tags": [
+        "pool",
+        "queue-pressure"
+      ],
+      "samplesMs": [
+        0.0874,
+        0.0948,
+        0.0811,
+        0.1235,
+        0.0837,
+        0.105,
+        0.123,
+        0.1091,
+        0.0898,
+        0.1221,
+        0.0807
+      ],
+      "stats": {
+        "operations": 40,
+        "medianMs": 0.0948,
+        "minMs": 0.0807,
+        "maxMs": 0.1235,
+        "p95Ms": 0.1235,
+        "medianMsPerOp": 0.00237082,
+        "opsPerSec": 421794.1012
+      }
+    },
+    {
+      "id": "ci:execution/retryWhen deterministic delay=0",
+      "section": "ci:execution",
+      "name": "retryWhen deterministic delay=0",
+      "category": "timerSensitive",
+      "tags": [
+        "retry",
+        "delay=0"
+      ],
+      "samplesMs": [
+        5812.2523,
+        5786.1933,
+        5794.0548,
+        5813.7931,
+        5817.9864,
+        5819.5414,
+        5840.4205,
+        5829.1699,
+        5831.6963,
+        5810.2121,
+        5819.1072
+      ],
+      "stats": {
+        "operations": 2500,
+        "medianMs": 5817.9864,
+        "minMs": 5786.1933,
+        "maxMs": 5840.4205,
+        "p95Ms": 5840.4205,
+        "medianMsPerOp": 2.32719457,
+        "opsPerSec": 429.7019
+      }
+    },
+    {
+      "id": "ci:execution/retryWhen deterministic delay=2ms",
+      "section": "ci:execution",
+      "name": "retryWhen deterministic delay=2ms",
+      "category": "timerSensitive",
+      "tags": [
+        "retry",
+        "delay=2ms",
+        "informational"
+      ],
+      "samplesMs": [
+        3424.8683,
+        3419.8836,
+        3434.7859,
+        3432.0917,
+        3409.9143,
+        3419.8048,
+        3408.3741,
+        3417.6834,
+        3424.7195,
+        3428.2654,
+        3428.1338
+      ],
+      "stats": {
+        "operations": 500,
+        "medianMs": 3424.7195,
+        "minMs": 3408.3741,
+        "maxMs": 3434.7859,
+        "p95Ms": 3434.7859,
+        "medianMsPerOp": 6.849439,
+        "opsPerSec": 145.9974
+      }
+    }
+  ]
+}

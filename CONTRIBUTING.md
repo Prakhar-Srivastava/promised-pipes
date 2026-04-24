@@ -22,7 +22,10 @@ npm install
 | Command | Purpose |
 |---------|---------|
 | `npm test` | Full `node:test` suite |
-| `npm run bench` | Benchmark harness (longer; optional for tiny doc-only tweaks) |
+| `npm run bench:ci` | Deterministic CI benchmark suite (writes `bench/out/ci-current.json`) |
+| `npm run bench:compare` | Local informational compare vs fallback baseline with mismatch/new-id allowances |
+| `npm run bench:showcase` | Real-world showcase scenarios vs Promise/manual baselines |
+| `npm run bench:baseline` | Refresh local fallback baseline (maintainers only; CI gating still uses main artifact baseline) |
 | `npm run docs:build` | Regenerate API HTML under `docs/api/` (gitignored) |
 | `npm run check:types` | Type-check `pipe.d.ts` with `tsc --noEmit` |
 | `npm run samples` | Run all runnable samples under `samples/` |
@@ -34,6 +37,8 @@ node samples/01-basics.mjs
 ```
 
 See [samples/README.md](./samples/README.md) for the full list.
+
+Benchmark methodology and interpretation guidelines live in [docs/benchmarking.md](./docs/benchmarking.md).
 
 ## Project layout (short)
 
